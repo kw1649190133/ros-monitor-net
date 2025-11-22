@@ -1,0 +1,21 @@
+# ROS相机话题配置文件
+# 支持多个相机的话题配置
+
+camera_topics:
+  # 左相机配置
+  - topic: "/left_camera/image_compressed/compressed"
+    camera_id: "left_camera"
+    message_type: "sensor_msgs/CompressedImage"
+    description: "左侧相机压缩图像话题"
+    
+  # 右相机配置
+  - topic: "/right_camera/image_compressed/compressed"
+    camera_id: "right_camera"
+    message_type: "sensor_msgs/CompressedImage"
+    description: "右侧相机压缩图像话题"
+
+# 相机图像处理参数
+image_processing:
+  jpeg_quality: 70        # JPEG压缩质量 (1-100)
+  max_width: 640         # 预览图像最大宽度
+  enable_resize: true    # 是否启用图像缩放

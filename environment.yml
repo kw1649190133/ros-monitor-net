@@ -1,0 +1,116 @@
+# ROS Monitor 环境规格文件
+# 记录项目运行所需的所有依赖和版本
+
+project:
+  name: ROS_monitor
+  version: 1.0.0
+  description: ROS远程监控系统
+
+system_requirements:
+  os: Ubuntu 20.04 LTS
+  architecture: x86_64 / ARM64
+  
+runtime_versions:
+  # 核心运行时
+  python: "3.8.10"
+  nodejs: ">=18.0.0"  # 推荐 v18 或 v20 LTS
+  npm: ">=9.0.0"
+  
+  # ROS环境
+  ros_distro: noetic  # 或 melodic
+  ros_version: "1.15.x"
+
+python_dependencies:
+  # Web框架
+  fastapi: "0.110.0"
+  uvicorn: "0.29.0"
+  websockets: "12.0"
+  pydantic: "2.7.1"
+  
+  # 图像处理
+  opencv-python: "4.8.1.78"
+  numpy: "1.24.3"
+  
+  # 工具库
+  python-multipart: "0.0.6"
+  structlog: "23.2.0"
+  PyYAML: "6.0.1"
+  
+  # ROS依赖（通过系统安装）
+  system_packages:
+    - rospy
+    - cv_bridge
+    - sensor_msgs
+    - geometry_msgs
+    - std_msgs
+
+nodejs_dependencies:
+  # 核心框架
+  react: "^19.1.1"
+  react-dom: "^19.1.1"
+  
+  # UI框架
+  antd: "^5.27.1"
+  "@ant-design/icons": "^6.0.0"
+  
+  # 数据可视化
+  echarts: "^5.6.0"
+  echarts-for-react: "^3.0.2"
+  
+  # 状态管理和HTTP
+  zustand: "^5.0.8"
+  axios: "^1.11.0"
+  dayjs: "^1.11.13"
+  
+  # 构建工具
+  vite: "^4.5.3"
+  typescript: "~5.8.3"
+
+system_packages:
+  # Ubuntu系统包（通过apt安装）
+  required:
+    - build-essential
+    - python3-pip
+    - python3-venv
+    - python3-dev
+    - curl
+    - git
+    - net-tools  # netstat
+    - lsof
+    
+  ros_packages:
+    - ros-noetic-desktop-full  # 或 ros-melodic-desktop-full
+    - ros-noetic-cv-bridge
+    - ros-noetic-image-transport
+    - ros-noetic-compressed-image-transport
+    
+  optional:
+    - tmux  # 多窗口会话管理
+    - htop  # 系统监控
+
+network_requirements:
+  ports:
+    backend: 8001
+    frontend_dev: 5173
+    ros_master: 11311
+    
+  firewall:
+    - "允许入站端口: 8001 (后端API)"
+    - "允许入站端口: 5173 (前端开发)"
+    - "允许入站端口: 11311 (ROS Master)"
+
+installation_order:
+  1: "安装系统包 (apt install)"
+  2: "安装ROS Noetic"
+  3: "创建Python虚拟环境"
+  4: "安装Python依赖 (pip install -r requirements.txt)"
+  5: "安装Node.js依赖 (npm install)"
+  6: "配置环境变量 (.env)"
+  7: "启动服务"
+
+notes:
+  - "Python虚拟环境路径: ros_monitor_backend/.venv"
+  - "前端构建输出: ros_monitor_frontend/dist"
+  - "配置文件位置: ros_monitor_backend/config/"
+  - "ROS工作空间需要source setup.bash"
+  - "GNSS功能需要gnss_comm (从源码编译)"

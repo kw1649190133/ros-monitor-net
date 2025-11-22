@@ -19,7 +19,8 @@ logger = logging.getLogger(__name__)
 class CompressedCameraSubscriber:
     """压缩图像相机数据订阅器"""
     
-    def __init__(self, topic: str, callback: Callable[[Dict[str, Any]], None]):
+    def __init__(self, topic: str, callback: Callable[[Dict[str, Any]], None], 
+                 camera_id: str = None, image_params: Dict[str, Any] = None):
         self.topic = topic
         self.callback = callback
         self.subscriber = None
@@ -27,22 +28,36 @@ class CompressedCameraSubscriber:
         self.last_frame_time = 0
         self.is_active = False
         
-        # 从topic提取相机ID，映射到前端期望的ID
-        if 'left_camera' in topic:
-            self.camera_id = 'left_camera'
-        elif 'right_camera' in topic:
-            self.camera_id = 'right_camera'
+        # 使用传入的camera_id,如果没有则从话题提取
+        if camera_id:
+            self.camera_id = camera_id
+            logger.info(f"使用配置的camera_id: {camera_id}")
         else:
-            # 从话题路径中提取相机ID
-            topic_parts = topic.split('/')
-            if len(topic_parts) >= 2:
-                self.camera_id = topic_parts[-2]  # 例如: /left_camera/image/compressed -> left_camera
+            # 从 topic 提取相机 ID，映射到前端期望的 ID
+            if 'left_camera' in topic:
+                self.camera_id = 'left_camera'
+            elif 'right_camera' in topic:
+                self.camera_id = 'right_camera'
             else:
-                self.camera_id = 'unknown_camera'
+                # 从话题路径中提取相机ID
+                topic_parts = topic.split('/')
+                if len(topic_parts) >= 2:
+                    self.camera_id = topic_parts[-3] if 'compressed' in topic_parts[-1] else topic_parts[-2]
+                else:
+                    self.camera_id = 'unknown_camera'
+            logger.info(f"从话题提取camera_id: {self.camera_id}")
         
-        # 图像压缩参数
-        self.jpeg_quality = 70  # 降低JPEG质量以减少文件大小
-        self.max_width = 640   # 降低预览宽度以减少数据量
+        # 图像压缩参数 - 使用配置文件的参数或默认值
+        if image_params:
+            self.jpeg_quality = image_params.get('jpeg_quality', 70)
+            self.max_width = image_params.get('max_width', 640)
+            self.enable_resize = image_params.get('enable_resize', True)
+            logger.info(f"使用配置的图像参数: quality={self.jpeg_quality}, max_width={self.max_width}")
+        else:
+            self.jpeg_quality = 70
+            self.max_width = 640
+            self.enable_resize = True
+            logger.info(f"使用默认图像参数")
         
         logger.info(f"创建压缩图像订阅器: topic={topic}, camera_id={self.camera_id}")
         self._setup_subscriber()
@@ -78,7 +93,7 @@ class CompressedCameraSubscriber:
                 # self._save_debug_image(cv_image, self.frame_count)
                 
                 # 调整图像尺寸以减少数据量
-                if cv_image.shape[1] > self.max_width:
+                if self.enable_resize and cv_image.shape[1] > self.max_width:
                     scale = self.max_width / cv_image.shape[1]
                     new_height = int(cv_image.shape[0] * scale)
                     cv_image = cv2.resize(cv_image, (self.max_width, new_height))

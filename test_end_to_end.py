@@ -39,8 +39,8 @@ def test_script_files():
     """验证脚本文件存在"""
     print("\n=== 验证脚本文件 ===")
     
-    start_script = "/home/ycs/work/ikinghandbot/scripts/start_all.sh"
-    stop_script = "/home/ycs/work/ikinghandbot/scripts/stop_all.sh"
+    start_script = "/home/ycs/work/ROS_monitor/script/start_all.sh"
+    stop_script = "/home/ycs/work/ROS_monitor/script/stop_all.sh"
     
     start_exists = Path(start_script).exists()
     stop_exists = Path(stop_script).exists()

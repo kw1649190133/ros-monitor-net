@@ -1,0 +1,36 @@
+# ROS相机话题配置文件示例
+# 复制此文件为 camera_topics.yaml 并根据实际情况修改
+
+camera_topics:
+  # 左相机配置示例
+  - topic: "/left_camera/image_compressed/compressed"
+    camera_id: "left_camera"
+    message_type: "sensor_msgs/CompressedImage"
+    description: "左侧相机压缩图像话题"
+    
+  # 右相机配置示例
+  - topic: "/right_camera/image_compressed/compressed"
+    camera_id: "right_camera"
+    message_type: "sensor_msgs/CompressedImage"
+    description: "右侧相机压缩图像话题"
+  
+  # 前置相机配置示例(可选)
+  # - topic: "/front_camera/image_compressed/compressed"
+  #   camera_id: "front_camera"
+  #   message_type: "sensor_msgs/CompressedImage"
+  #   description: "前置相机压缩图像话题"
+
+# 相机图像处理参数
+image_processing:
+  jpeg_quality: 70        # JPEG压缩质量 (1-100, 数值越大质量越好但文件越大)
+  max_width: 640         # 预览图像最大宽度(像素)
+  enable_resize: true    # 是否启用图像缩放
+
+# 配置说明:
+# - topic: ROS话题的完整路径
+# - camera_id: 前端显示用的相机ID,必须唯一
+# - message_type: ROS消息类型(目前支持 sensor_msgs/CompressedImage)
+# - description: 相机描述(可选)
+# - jpeg_quality: 建议范围 60-90, 默认70
+# - max_width: 根据网络带宽调整, 默认640
+# - enable_resize: 设为false则使用原始图像尺寸

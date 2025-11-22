@@ -10,6 +10,7 @@ import logging
 import time
 
 from src.services.script_executor import script_executor
+from src.utils.data_collection_config import data_collection_config
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/data-collection", tags=["data-collection"])
@@ -58,7 +59,7 @@ async def start_data_collection(request: StartRequest):
             _status_cache.update({
                 "is_running": True,
                 "start_time": time.time(),
-                "script_path": f"/home/ycs/work/ikinghandbot/scripts/{request.script}",
+                "script_path": f"{data_collection_config.script_dir}/{request.script}",
                 "last_update": time.time()
             })
             

@@ -14,3 +14,4 @@ numpy==1.24.3
 # Additional utilities  
 python-multipart==0.0.6
 structlog==23.2.0
+PyYAML==6.0.1

@@ -6,12 +6,35 @@ import { SystemStatus } from '../Dashboard/SystemStatus';
 import { ConnectionStatus } from '../Dashboard/ConnectionStatus';
 import CameraMonitor from '../CameraMonitor';
 import DataCollectionControl from '../Sensors/DataCollectionControl';
+import GNSSStatusPanel from '../Sensors/GNSSStatusPanel';
 import { useSystemStore } from '../../stores/useSystemStore';
 import { apiService } from '../../services/api';
+import { wsService } from '../../services/websocket';
+import { config } from '../../utils/constants';
 
 export const MainLayout: React.FC = () => {
   const { ui } = useSystemStore();
   const currentPage = ui.currentPage;
+
+  // 初始化WebSocket连接
+  useEffect(() => {
+    const connectWebSocket = async () => {
+      try {
+        console.log('🔌 正在连接WebSocket...');
+        await wsService.connect(config.API_HOST, config.API_PORT);
+        console.log('✅ WebSocket全局连接成功');
+      } catch (error) {
+        console.error('❌ WebSocket连接失败:', error);
+      }
+    };
+
+    connectWebSocket();
+
+    return () => {
+      console.log('🔌 断开WebSocket连接...');
+      wsService.disconnect();
+    };
+  }, []);
 
   // 初始化API健康检查
   useEffect(() => {
@@ -33,6 +56,8 @@ export const MainLayout: React.FC = () => {
         return <SystemStatus />;
       case 'camera':
         return <CameraMonitor />;
+      case 'gnss':
+        return <GNSSStatusPanel />;
       case 'connection':
         return <ConnectionStatus />;
       case 'data-collection':

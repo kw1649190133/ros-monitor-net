@@ -3,6 +3,8 @@
  * 最小化实现，遵循YAGNI和KISS原则
  */
 
+import { config } from '../utils/constants';
+
 export interface DataCollectionStatus {
   is_running: boolean;
   process_id: number | null;
@@ -20,7 +22,7 @@ export interface APIResponse<T = any> {
 class DataCollectionService {
   private baseURL: string;
 
-  constructor(host: string = 'localhost', port: number = 8000) {
+  constructor(host: string = config.API_HOST, port: number = config.API_PORT) {
     this.baseURL = `http://${host}:${port}`;
   }
 

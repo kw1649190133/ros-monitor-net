@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { CameraData, LidarData, SensorStatus } from '../types/sensors';
+import type { GNSSData } from '../types/gnss';
 
 
 interface SensorStore {
@@ -16,10 +17,19 @@ interface SensorStore {
     status: SensorStatus;
   };
   
+  // GNSS数据
+  gnss: {
+    latest: GNSSData | null;
+    history: GNSSData[];
+    status: SensorStatus;
+  };
+  
   // Actions
   updateCameraData: (camera: 'left' | 'right', data: CameraData) => void;
   updateLidarData: (data: LidarData) => void;
-  updateSensorStatus: (sensor: 'camera' | 'lidar', status: Partial<SensorStatus>) => void;
+  updateGNSSData: (data: GNSSData) => void;
+  updateSensorStatus: (sensor: 'camera' | 'lidar' | 'gnss', status: Partial<SensorStatus>) => void;
+  clearGNSSData: () => void;
   clearAllData: () => void;
 }
 
@@ -39,6 +49,12 @@ export const useSensorStore = create<SensorStore>((set) => ({
   
   lidar: {
     latest: null,
+    status: { ...initialSensorStatus },
+  },
+  
+  gnss: {
+    latest: null,
+    history: [],
     status: { ...initialSensorStatus },
   },
   
@@ -67,7 +83,20 @@ export const useSensorStore = create<SensorStore>((set) => ({
     },
   })),
   
-  updateSensorStatus: (sensor: 'camera' | 'lidar', status: Partial<SensorStatus>) => set((state) => {
+  updateGNSSData: (data: GNSSData) => set((state) => ({
+    gnss: {
+      latest: data,
+      history: [...state.gnss.history.slice(-99), data], // 保留最近100条
+      status: {
+        connected: true,
+        lastUpdate: Date.now(),
+        frequency: state.gnss.status.frequency,
+        errorCount: state.gnss.status.errorCount,
+      },
+    },
+  })),
+  
+  updateSensorStatus: (sensor: 'camera' | 'lidar' | 'gnss', status: Partial<SensorStatus>) => set((state) => {
     if (sensor === 'camera') {
       return {
         camera: {
@@ -88,9 +117,27 @@ export const useSensorStore = create<SensorStore>((set) => ({
           },
         },
       };
+    } else if (sensor === 'gnss') {
+      return {
+        gnss: {
+          ...state.gnss,
+          status: {
+            ...state.gnss.status,
+            ...status,
+          },
+        },
+      };
     }
     return state;
   }),
+  
+  clearGNSSData: () => set(() => ({
+    gnss: {
+      latest: null,
+      history: [],
+      status: { ...initialSensorStatus },
+    },
+  })),
   
   clearAllData: () => set(() => ({
     camera: {
@@ -100,6 +147,11 @@ export const useSensorStore = create<SensorStore>((set) => ({
     },
     lidar: {
       latest: null,
+      status: { ...initialSensorStatus },
+    },
+    gnss: {
+      latest: null,
+      history: [],
       status: { ...initialSensorStatus },
     },
   })),

@@ -9,6 +9,9 @@ import time
 from src.ros_bridge.subscribers.compressed_camera_subscriber import CompressedCameraSubscriber
 from src.ros_bridge.subscribers.lidar_subscriber import LidarSubscriber
 from src.ros_bridge.subscribers.imu_subscriber import ImuSubscriber
+from src.ros_bridge.subscribers.gnss_subscriber import GNSSSubscriber
+from src.ros_bridge.subscribers.navsatfix_subscriber import NavSatFixSubscriber
+from src.utils.camera_config_loader import camera_config
 
 logger = logging.getLogger(__name__)
 
@@ -22,17 +25,25 @@ class ROSNodeManager:
         self._running = False
         self._initialized = False
         
-        # 修正相机话题配置 - 使用实际的压缩图像话题
-        self.camera_topics = [
-            '/left_camera/image/compressed',
-            '/right_camera/image/compressed'
-        ]
+        # 从配置文件加载相机话题
+        self.camera_topics = camera_config.get_topic_list()
+        logger.info(f"从配置文件加载相机话题: {self.camera_topics}")
+        
+        # 加载图像处理参数
+        self.image_params = camera_config.get_image_processing_params()
+        logger.info(f"图像处理参数: {self.image_params}")
         
         self.lidar_topics = [
             '/livox/lidar'
         ]
         self.imu_topics = [
             '/livox/imu'
+        ]
+        self.gnss_topics = [
+            # 优先使用GnssPVTSolnMsg话题(信息全面,包含RTK状态、卫星数、速度等)
+            {'topic': '/ublox_driver/receiver_pvt', 'type': 'GnssPVTSolnMsg'},
+            # 备用NavSatFix话题(标准ROS消息,但信息缺失严重)
+            {'topic': '/ublox_driver/receiver_lla', 'type': 'NavSatFix'}
         ]
         
     async def initialize(self):
@@ -84,15 +95,20 @@ class ROSNodeManager:
     def _setup_subscribers(self):
         """设置ROS话题订阅器"""
         try:
-            # 设置相机订阅器 - 使用CompressedCameraSubscriber
+            # 设置相机订阅器 - 使用配置文件中的话题
             for topic in self.camera_topics:
                 try:
+                    # 从配置获取相机ID
+                    camera_id = camera_config.get_camera_id_by_topic(topic)
+                    
                     subscriber = CompressedCameraSubscriber(
                         topic=topic,
-                        callback=lambda data, t=topic: self._update_data(t, data)
+                        camera_id=camera_id,  # 传递配置的camera_id
+                        callback=lambda data, t=topic: self._update_data(t, data),
+                        image_params=self.image_params  # 传递图像处理参数
                     )
                     self.subscribers[topic] = subscriber
-                    logger.info(f"Compressed camera subscriber created for {topic}")
+                    logger.info(f"Compressed camera subscriber created for {topic} (camera_id: {camera_id})")
                 except Exception as e:
                     logger.warning(f"Failed to create compressed camera subscriber for {topic}: {e}")
             
@@ -122,6 +138,42 @@ class ROSNodeManager:
                 except Exception as e:
                     logger.warning(f"Failed to create IMU subscriber for {topic}: {e}")
             
+            # 设置GNSS订阅器 - 自动选择NavSatFix或GnssPVTSolnMsg
+            gnss_created = False
+            for gnss_config in self.gnss_topics:
+                topic = gnss_config['topic']
+                msg_type = gnss_config['type']
+                logger.info(f"🔍 尝试创建GNSS订阅器: {topic} ({msg_type})")
+                try:
+                    if msg_type == 'NavSatFix':
+                        # 使用NavSatFix订阅器(推荐)
+                        subscriber = NavSatFixSubscriber(
+                            topic=topic,
+                            callback=lambda data, t=topic: self._update_data(t, data)
+                        )
+                        self.subscribers[topic] = subscriber
+                        logger.info(f"✅ NavSatFix GNSS订阅器创建成功: {topic}")
+                        gnss_created = True
+                        break  # 成功后停止尝试
+                    else:
+                        # 备用: 使用GnssPVTSolnMsg订阅器
+                        subscriber = GNSSSubscriber(
+                            topic=topic,
+                            callback=lambda data, t=topic: self._update_data(t, data)
+                        )
+                        self.subscribers[topic] = subscriber
+                        logger.info(f"✅ GnssPVTSolnMsg GNSS订阅器创建成功: {topic}")
+                        gnss_created = True
+                        break
+                except Exception as e:
+                    logger.warning(f"❌ 创建GNSS订阅器失败 {topic} ({msg_type}): {e}")
+                    import traceback
+                    logger.debug(f"错误堆栈: {traceback.format_exc()}")
+                    continue  # 尝试下一个
+            
+            if not gnss_created:
+                logger.error("⚠️ 所有GNSS订阅器创建失败，将使用虚拟数据")
+            
             logger.info(f"ROS subscribers setup completed. Total: {len(self.subscribers)}")
             
         except Exception as e:
@@ -135,7 +187,12 @@ class ROSNodeManager:
                 'data': data,
                 'updated_at': time.time()
             }
-            logger.info(f"数据更新成功: {topic}, 帧数: {data.get('sequence', 0)}")
+            # 对GNSS数据进行特别日志
+            if 'gnss' in topic.lower() or 'receiver' in topic.lower():
+                rtk_status = data.get('rtk_status', 'UNKNOWN')
+                logger.info(f"📡 GNSS数据更新成功: {topic}, RTK={rtk_status}, 帧数={data.get('sequence', 0)}")
+            else:
+                logger.debug(f"数据更新成功: {topic}, 帧数: {data.get('sequence', 0)}")
         except Exception as e:
             logger.error(f"Error updating data for topic {topic}: {e}")
         
@@ -247,6 +304,97 @@ class ROSNodeManager:
             'orientation': {'x': 0.0, 'y': 0.0, 'z': 0.0, 'w': 1.0},
             'angular_velocity': {'x': 0.1, 'y': 0.2, 'z': 0.3},
             'linear_acceleration': {'x': 9.8, 'y': 0.0, 'z': 0.0}
+        }
+    
+    async def get_latest_gnss_data(self) -> Optional[Dict[str, Any]]:
+        """获取最新GNSS数据"""
+        # 检查所有可能的GNSS话题
+        for gnss_config in self.gnss_topics:
+            topic = gnss_config['topic']
+            if topic in self.latest_data:
+                data = self.latest_data[topic]
+                if data and 'data' in data:
+                    logger.info(f"📡 返回GNSS真实数据: {topic}")
+                    return data['data']
+        
+        # 如果没有真实数据,返回虚拟数据便于测试
+        logger.warning("⚠️  没有真实GNSS数据,返回虚拟数据")
+        return await self._get_test_gnss_data()
+    
+    async def _get_test_gnss_data(self) -> Dict[str, Any]:
+        """生成虚拟GNSS测试数据"""
+        if not hasattr(self, '_test_gnss_counter'):
+            self._test_gnss_counter = 0
+        
+        self._test_gnss_counter += 1
+        
+        import random
+        import math
+        
+        # 模拟北京附近的GPS坐标，带微小随机漂移
+        base_lat = 39.0790108
+        base_lon = 117.7151327
+        base_alt = -2.5
+        
+        # 添加微小随机漂移(模拟移动)
+        drift = 0.00001  # 约1米的漂移
+        lat = base_lat + random.uniform(-drift, drift)
+        lon = base_lon + random.uniform(-drift, drift)
+        alt = base_alt + random.uniform(-0.1, 0.1)
+        
+        # 模拟RTK状态循环: RTK_FIXED -> RTK_FLOAT -> GPS_3D
+        status_cycle = ['RTK_FIXED', 'RTK_FLOAT', 'GPS_3D']
+        rtk_status = status_cycle[self._test_gnss_counter % 3]
+        
+        # 根据状态设置精度
+        if rtk_status == 'RTK_FIXED':
+            h_acc = random.uniform(0.01, 0.03)  # 1-3cm
+            v_acc = random.uniform(0.02, 0.04)
+            num_sv = random.randint(20, 28)
+            carr_soln = 2
+        elif rtk_status == 'RTK_FLOAT':
+            h_acc = random.uniform(0.1, 0.3)  # 10-30cm
+            v_acc = random.uniform(0.15, 0.35)
+            num_sv = random.randint(15, 22)
+            carr_soln = 1
+        else:  # GPS_3D
+            h_acc = random.uniform(1.0, 3.0)  # 1-3m
+            v_acc = random.uniform(1.5, 4.0)
+            num_sv = random.randint(8, 15)
+            carr_soln = 0
+        
+        return {
+            'rtk_status': rtk_status,
+            'quality': {
+                'fix_type': 3,
+                'valid_fix': True,
+                'diff_soln': rtk_status in ['RTK_FIXED', 'RTK_FLOAT'],
+                'carr_soln': carr_soln,
+                'num_sv': num_sv
+            },
+            'position': {
+                'latitude': round(lat, 8),
+                'longitude': round(lon, 8),
+                'altitude': round(alt, 3),
+                'height_msl': round(alt + 7.0, 3)  # 模拟MSL高度
+            },
+            'accuracy': {
+                'h_acc': round(h_acc, 4),
+                'v_acc': round(v_acc, 4),
+                'p_dop': round(math.sqrt(h_acc**2 + v_acc**2) / 2, 2)
+            },
+            'velocity': {
+                'vel_n': round(random.uniform(-0.5, 0.5), 3),
+                'vel_e': round(random.uniform(-0.5, 0.5), 3),
+                'vel_d': round(random.uniform(-0.1, 0.1), 3),
+                'vel_acc': round(random.uniform(0.1, 0.3), 3)
+            },
+            'time': {
+                'week': 2393,
+                'tow': time.time() % 604800  # GPS周内秒
+            },
+            'timestamp': time.time(),
+            'sequence': self._test_gnss_counter
         }
         
     def is_connected(self) -> bool:

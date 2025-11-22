@@ -5,6 +5,7 @@ import asyncio
 from contextlib import asynccontextmanager
 import logging
 import time
+import os
 
 from src.websocket.connection_manager import ConnectionManager
 from src.ros_bridge.node_manager import ROSNodeManager
@@ -128,7 +129,12 @@ async def handle_websocket_message(client_id: str, message: dict):
         msg_type = message.get("type")
         
         if msg_type == "subscribe":
-            topics = message.get("topics", [])
+            # 兼容两种格式: message.topics 和 message.data.topics
+            topics = message.get("topics") or message.get("data", {}).get("topics", [])
+            if not topics:
+                logger.warning(f"Client {client_id} subscribe请求没有topics字段")
+                topics = []
+            
             await connection_manager.subscribe_topics(client_id, topics)
             logger.info(f"Client {client_id} subscribed to topics: {topics}")
             
@@ -140,7 +146,12 @@ async def handle_websocket_message(client_id: str, message: dict):
             }, client_id)
             
         elif msg_type == "unsubscribe":
-            topics = message.get("topics", [])
+            # 兼容两种格式
+            topics = message.get("topics") or message.get("data", {}).get("topics", [])
+            if not topics:
+                logger.warning(f"Client {client_id} unsubscribe请求没有topics字段")
+                topics = []
+            
             await connection_manager.unsubscribe_topics(client_id, topics)
             logger.info(f"Client {client_id} unsubscribed from topics: {topics}")
             
@@ -219,6 +230,11 @@ async def background_broadcast():
                 camera_data = await ros_manager.get_latest_camera_data()
                 lidar_data = await ros_manager.get_latest_lidar_data()
                 imu_data = await ros_manager.get_latest_imu_data()
+                gnss_data = await ros_manager.get_latest_gnss_data()
+                
+                # 调试日志: 检查GNSS数据获取
+                if gnss_data:
+                    logger.info(f"获取到GNSS数据: RTK={gnss_data.get('rtk_status')}, 卡星={gnss_data.get('quality', {}).get('num_sv', 0)}")
                 
                 # 推送给订阅的客户端
                 if camera_data:
@@ -250,6 +266,18 @@ async def background_broadcast():
                         "timestamp": time.time()
                     }
                     await connection_manager.broadcast_to_subscribers("imu", message)
+                
+                # 广播GNSS数据
+                if gnss_data:
+                    message = {
+                        "type": "gnss",
+                        "data": gnss_data,
+                        "timestamp": time.time()
+                    }
+                    await connection_manager.broadcast_to_subscribers("gnss", message)
+                    logger.info(f"GNSS数据已广播, RTK状态: {gnss_data.get('rtk_status', 'UNKNOWN')}, 卡星数: {gnss_data.get('quality', {}).get('num_sv', 0)}")
+                else:
+                    logger.debug("没有GNSS数据可广播")
                     
         except Exception as e:
             logger.error(f"Background broadcast error: {e}")
@@ -261,10 +289,25 @@ from src.api.v1.data_collection import router as data_collection_router
 app.include_router(data_collection_router, prefix="/api/v1")
 
 if __name__ == "__main__":
+    # 从环境变量或命令行参数获取端口
+    import sys
+    port = 8001  # 默认端口改为8001
+    
+    # 支持从环境变量读取
+    if os.getenv('ROS_MONITOR_PORT'):
+        port = int(os.getenv('ROS_MONITOR_PORT'))
+    
+    # 支持命令行参数 --port
+    for i, arg in enumerate(sys.argv):
+        if arg == '--port' and i + 1 < len(sys.argv):
+            port = int(sys.argv[i + 1])
+            break
+    
+    logger.info(f"Starting server on port {port}")
     uvicorn.run(
         "src.main:app",
         host="0.0.0.0",
-        port=8000,
+        port=port,
         reload=False,
         log_level="info"
     )

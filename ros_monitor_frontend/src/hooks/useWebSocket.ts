@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { config } from '../utils/constants';
 
 interface WebSocketMessage {
   type: string;
@@ -12,7 +13,7 @@ interface UseWebSocketReturn {
   lastMessage: WebSocketMessage | null;
 }
 
-export const useWebSocket = (url: string = 'ws://localhost:8000/ws'): UseWebSocketReturn => {
+export const useWebSocket = (url: string = `${config.WS_URL}/ws`): UseWebSocketReturn => {
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastMessage, setLastMessage] = useState<WebSocketMessage | null>(null);

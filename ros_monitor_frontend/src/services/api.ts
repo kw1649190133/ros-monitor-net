@@ -1,4 +1,5 @@
 import { useSystemStore } from '../stores/useSystemStore';
+import { config } from '../utils/constants';
 
 export interface APIHealthResponse {
   success: boolean;
@@ -26,7 +27,7 @@ class APIService {
   private healthCheckInterval: number | null = null;
   private isChecking = false;
 
-  constructor(host: string = 'localhost', port: number = 8000) {
+  constructor(host: string = config.API_HOST, port: number = config.API_PORT) {
     this.baseURL = `http://${host}:${port}`;
   }
 

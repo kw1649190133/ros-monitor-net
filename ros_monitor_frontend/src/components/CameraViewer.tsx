@@ -52,12 +52,6 @@ export const CameraViewer: React.FC<CameraViewerProps> = ({
   useEffect(() => {
     if (!connected) return;
     
-    // 订阅相机数据
-    sendMessage({
-      type: 'subscribe',
-      topics: ['camera']
-    });
-    
     // 设置消息处理函数
     const handleWebSocketMessage = (message: any) => {
       try {
@@ -84,7 +78,7 @@ export const CameraViewer: React.FC<CameraViewerProps> = ({
     return () => {
       window.removeEventListener('websocket-message', messageHandler as EventListener);
     };
-  }, [connected, cameraId, sendMessage]);
+  }, [connected, cameraId]);
   
   // 订阅/取消订阅相机数据
   useEffect(() => {
@@ -92,17 +86,22 @@ export const CameraViewer: React.FC<CameraViewerProps> = ({
     
     if (isStreaming) {
       // 订阅相机数据
+      console.log(`📡 ${cameraTitle} 订阅相机数据流`);
       sendMessage({
         type: 'subscribe',
         topics: ['camera']
       });
       message.success(`${cameraTitle} 数据流已开启`);
     } else {
-      // 取消订阅
+      // 取消订阅 - 清空相机数据显示
+      console.log(`❌ ${cameraTitle} 取消订阅相机数据流`);
       sendMessage({
         type: 'unsubscribe',
         topics: ['camera']
       });
+      // 清空相机数据，停止显示
+      setCameraData(null);
+      setFrameCount(0);
       message.info(`${cameraTitle} 数据流已停止`);
     }
   }, [isStreaming, connected, sendMessage, cameraTitle]);
@@ -150,7 +149,7 @@ export const CameraViewer: React.FC<CameraViewerProps> = ({
     ctx.fillText(`Camera: ${cameraTitle}`, 20, 30);
     ctx.fillText(`Timestamp: ${new Date((cameraData?.timestamp || Date.now() / 1000) * 1000).toLocaleTimeString()}`, 20, 50);
     ctx.fillText(`Resolution: ${cameraData?.width || 0}x${cameraData?.height || 0}`, 20, 70);
-    ctx.fillText(`Frame: ${frameCount} | FPS: ${cameraData?.frame_rate || 0}`, 20, 90);
+    ctx.fillText(`Frame: ${frameCount} | FPS: ${(cameraData?.frame_rate || 0).toFixed(2)}`, 20, 90);
   }, [cameraTitle, cameraData, frameCount]);
   
   // 事件处理函数
@@ -330,8 +329,8 @@ export const CameraViewer: React.FC<CameraViewerProps> = ({
           <span>错误: {errorCount}</span>
           {cameraData && (
             <>
-              <span>压缩率: {cameraData.compression_ratio}%</span>
-              <span>帧率: {cameraData.frame_rate} FPS</span>
+              <span>压缩率: {cameraData.compression_ratio.toFixed(2)}%</span>
+              <span>帧率: {cameraData.frame_rate.toFixed(2)} FPS</span>
             </>
           )}
         </Space>

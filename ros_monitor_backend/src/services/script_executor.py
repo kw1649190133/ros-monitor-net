@@ -9,11 +9,9 @@ import logging
 from typing import Dict, Optional, NamedTuple
 from dataclasses import dataclass
 
-logger = logging.getLogger(__name__)
+from src.utils.data_collection_config import data_collection_config
 
-# 允许的脚本目录
-ALLOWED_SCRIPT_DIR = "/home/ycs/work/ikinghandbot/scripts"
-ALLOWED_SCRIPTS = {"start_all.sh", "stop_all.sh"}
+logger = logging.getLogger(__name__)
 
 @dataclass
 class ExecutionResult:
@@ -32,10 +30,10 @@ class ScriptExecutor:
     
     def _validate_script_path(self, script_name: str) -> bool:
         """验证脚本路径合法性"""
-        if script_name not in ALLOWED_SCRIPTS:
+        if script_name not in data_collection_config.allowed_scripts:
             return False
             
-        full_path = os.path.join(ALLOWED_SCRIPT_DIR, script_name)
+        full_path = os.path.join(data_collection_config.script_dir, script_name)
         return os.path.isfile(full_path) and os.access(full_path, os.X_OK)
     
     def _check_duplicate_start(self, script_name: str) -> bool:
@@ -69,7 +67,7 @@ class ScriptExecutor:
                 )
             
             # 构建完整路径
-            script_path = os.path.join(ALLOWED_SCRIPT_DIR, script_name)
+            script_path = os.path.join(data_collection_config.script_dir, script_name)
             
             # 执行脚本
             logger.info(f"Executing script: {script_path}")

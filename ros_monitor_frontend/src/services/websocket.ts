@@ -1,5 +1,7 @@
 import { useSensorStore } from '../stores/useSensorStore';
 import { useSystemStore } from '../stores/useSystemStore';
+import { config } from '../utils/constants';
+import type { GNSSData } from '../types/gnss';
 
 export interface WSMessage {
   type: string;
@@ -24,7 +26,7 @@ export class WebSocketService {
     return `frontend_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
   
-  connect(host: string, port: number = 8000): Promise<void> {
+  connect(host: string = config.API_HOST, port: number = config.API_PORT): Promise<void> {
     if (this.isConnecting) {
       return Promise.reject(new Error('Connection already in progress'));
     }
@@ -87,7 +89,7 @@ export class WebSocketService {
     });
   }
   
-  private handleMessage(message: WSMessage): void {
+  private handleMessage(message: WSMessage | any): void {
     const { type, data } = message;
     
     switch (type) {
@@ -96,29 +98,49 @@ export class WebSocketService {
         break;
         
       case 'subscribed':
-        console.log('Topics subscribed:', data.topics);
+      case 'subscription_confirmed':
+        // 后端可能返回两种类型
+        const topics = message.topics || (data && data.topics) || [];
+        console.log('✅ 话题订阅成功:', topics);
+        if (message.message) {
+          console.log('📝', message.message);
+        }
+        break;
+      
+      case 'unsubscribed':
+        const unsubTopics = message.topics || (data && data.topics) || [];
+        console.log('❌ 取消订阅:', unsubTopics);
+        if (message.message) {
+          console.log('📝', message.message);
+        }
         break;
         
-
-        
       case 'camera':
-        this.handleCameraData(data);
+        this.handleCameraData(data || message);
         break;
         
       case 'lidar':
-        this.handleLidarData(data);
+        this.handleLidarData(data || message);
+        break;
+      
+      case 'gnss':
+        this.handleGNSSData(data || message);
         break;
         
       case 'system_status':
-        this.handleSystemStatus(data);
+        this.handleSystemStatus(data || message);
         break;
         
       case 'ack':
-        console.log('Message acknowledged:', data);
+        console.log('Message acknowledged:', data || message);
+        break;
+      
+      case 'error':
+        console.error('❌ 服务器错误:', message.message || data);
         break;
         
       default:
-        console.warn('Unknown message type:', type);
+        console.warn('⚠️  未知消息类型:', type, message);
     }
   }
   
@@ -158,6 +180,20 @@ export class WebSocketService {
     });
   }
   
+  private handleGNSSData(data: any): void {
+    const sensorStore = useSensorStore.getState();
+    sensorStore.updateGNSSData({
+      rtk_status: data.rtk_status,
+      quality: data.quality,
+      position: data.position,
+      accuracy: data.accuracy,
+      velocity: data.velocity,
+      time: data.time,
+      timestamp: data.timestamp,
+      sequence: data.sequence
+    });
+  }
+  
   send(message: WSMessage): void {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(message));
@@ -167,11 +203,17 @@ export class WebSocketService {
   }
   
   subscribe(topics: string[]): void {
+    if (!this.isConnected()) {
+      console.warn('⚠️ WebSocket还未连接，无法订阅:', topics);
+      return;
+    }
+    
     this.send({
       type: 'subscribe',
       timestamp: new Date().toISOString(),
       data: { topics }
     });
+    console.log('📡 发送订阅请求:', topics);
   }
   
   unsubscribe(topics: string[]): void {

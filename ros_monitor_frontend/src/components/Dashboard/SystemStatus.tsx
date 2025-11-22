@@ -7,7 +7,8 @@ import {
   CameraOutlined,
   RadarChartOutlined,
   ClockCircleOutlined,
-  DashboardOutlined
+  DashboardOutlined,
+  AimOutlined
 } from '@ant-design/icons';
 import { useSystemStore } from '../../stores/useSystemStore';
 import { useSensorStore } from '../../stores/useSensorStore';
@@ -16,10 +17,10 @@ const { Title, Text } = Typography;
 
 export const SystemStatus: React.FC = () => {
   const { connection, performance } = useSystemStore();
-  const { camera, lidar } = useSensorStore();
+  const { camera, lidar, gnss } = useSensorStore();
 
   // 添加调试信息
-  console.log('SystemStatus rendered:', { connection, performance, camera, lidar });
+  console.log('SystemStatus rendered:', { connection, performance, camera, lidar, gnss });
 
   const getStatusBadge = (connected: boolean) => (
     <Badge 
@@ -157,7 +158,8 @@ export const SystemStatus: React.FC = () => {
                 display: 'flex', 
                 justifyContent: 'space-between', 
                 alignItems: 'center',
-                padding: '8px 0'
+                padding: '8px 0',
+                borderBottom: '1px solid #f0f0f0'
               }}>
                 <Space>
                   <RadarChartOutlined style={{ color: getConnectionColor(lidar.status.connected) }} />
@@ -167,6 +169,23 @@ export const SystemStatus: React.FC = () => {
                   {getStatusBadge(lidar.status.connected)}
                   <span style={{ fontSize: '12px', color: '#666' }}>
                     {formatFrequency(lidar.status.frequency)}
+                  </span>
+                </Space>
+              </div>
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center',
+                padding: '8px 0'
+              }}>
+                <Space>
+                  <AimOutlined style={{ color: getConnectionColor(gnss.status.connected) }} />
+                  <span>GNSS/RTK</span>
+                </Space>
+                <Space>
+                  {getStatusBadge(gnss.status.connected)}
+                  <span style={{ fontSize: '12px', color: '#666' }}>
+                    {formatFrequency(gnss.status.frequency)}
                   </span>
                 </Space>
               </div>
@@ -236,8 +255,8 @@ export const SystemStatus: React.FC = () => {
           >
             <Statistic
               title="在线传感器"
-              value={[camera.status.connected, lidar.status.connected].filter(Boolean).length}
-              suffix="/ 2"
+              value={[camera.status.connected, lidar.status.connected, gnss.status.connected].filter(Boolean).length}
+              suffix="/ 3"
               valueStyle={{ color: '#1890ff', fontSize: '28px' }}
             />
           </Card>

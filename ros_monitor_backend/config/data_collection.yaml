@@ -1,0 +1,26 @@
+# 数据采集脚本配置文件
+
+# 脚本目录配置
+script_config:
+  # 脚本根目录（绝对路径）
+  script_dir: "/home/ycs/work/ROS_monitor/script"
+  
+  # 允许执行的脚本列表（安全白名单）
+  allowed_scripts:
+    - "start_all.sh"
+    - "stop_all.sh"
+  
+  # 脚本执行超时设置（秒）
+  execution_timeout: 30
+
+# 数据采集行为配置
+data_collection:
+  # 启动脚本配置
+  start:
+    script_name: "start_all.sh"
+    timeout: 60
+    
+  # 停止脚本配置
+  stop:
+    script_name: "stop_all.sh"
+    timeout: 20
