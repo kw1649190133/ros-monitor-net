@@ -24,8 +24,9 @@ class CameraConfigLoader:
         """
         if config_path is None:
             # 默认配置文件路径
+            # 从 src/utils/ 向上两级到项目根目录，然后进入 config/
             current_dir = os.path.dirname(os.path.abspath(__file__))
-            self.config_path = os.path.join(current_dir, '..', 'config', 'camera_topics.yaml')
+            self.config_path = os.path.normpath(os.path.join(current_dir, '..', '..', 'config', 'camera_topics.yaml'))
         else:
             self.config_path = config_path
         
@@ -58,7 +59,7 @@ class CameraConfigLoader:
         self.config = {
             'camera_topics': [
                 {
-                    'topic': '/left_camera/image_compressed/compressed',
+                    'topic': '/left_camera/image/compressed',
                     'camera_id': 'left_camera',
                     'message_type': 'sensor_msgs/CompressedImage',
                     'description': '左侧相机压缩图像话题(默认)'

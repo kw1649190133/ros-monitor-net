@@ -1,7 +1,6 @@
 import { useSensorStore } from '../stores/useSensorStore';
 import { useSystemStore } from '../stores/useSystemStore';
 import { config } from '../utils/constants';
-import type { GNSSData } from '../types/gnss';
 
 export interface WSMessage {
   type: string;
@@ -126,19 +125,31 @@ export class WebSocketService {
       case 'gnss':
         this.handleGNSSData(data || message);
         break;
-        
+
+      case 'slam_path':
+        this.handlePathData(data || message);
+        break;
+
+      case 'slam_odometry':
+        this.handleOdometryData(data || message);
+        break;
+
+      case 'slam_cloud':
+        this.handleRegisteredCloudData(data || message);
+        break;
+
       case 'system_status':
         this.handleSystemStatus(data || message);
         break;
-        
+
       case 'ack':
         console.log('Message acknowledged:', data || message);
         break;
-      
+
       case 'error':
         console.error('❌ 服务器错误:', message.message || data);
         break;
-        
+
       default:
         console.warn('⚠️  未知消息类型:', type, message);
     }
@@ -193,7 +204,49 @@ export class WebSocketService {
       sequence: data.sequence
     });
   }
-  
+
+  private handlePathData(data: any): void {
+    const sensorStore = useSensorStore.getState();
+    sensorStore.updatePathData({
+      topic: data.topic,
+      timestamp: data.timestamp,
+      frame_id: data.frame_id,
+      sequence: data.sequence,
+      total_poses: data.total_poses,
+      sampled_poses: data.sampled_poses,
+      poses: data.poses
+    });
+  }
+
+  private handleOdometryData(data: any): void {
+    const sensorStore = useSensorStore.getState();
+    sensorStore.updateOdometryData({
+      topic: data.topic,
+      timestamp: data.timestamp,
+      frame_id: data.frame_id,
+      child_frame_id: data.child_frame_id,
+      sequence: data.sequence,
+      pose: data.pose,
+      twist: data.twist
+    });
+  }
+
+  private handleRegisteredCloudData(data: any): void {
+    const sensorStore = useSensorStore.getState();
+    sensorStore.updateRegisteredCloudData({
+      topic: data.topic,
+      timestamp: data.timestamp,
+      frame_id: data.frame_id,
+      sequence: data.sequence,
+      total_points: data.total_points,
+      sampled_points: data.sampled_points,
+      points: data.points,
+      fields: data.fields,
+      colors: data.colors,
+      has_rgb: data.has_rgb
+    });
+  }
+
   send(message: WSMessage): void {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(message));

@@ -48,6 +48,7 @@ ROS Monitor System
 - **TypeScript**: 类型安全的JavaScript
 - **Ant Design**: 企业级UI组件库
 - **ECharts**: 数据可视化图表
+- **Three.js**: 3D可视化 (react-three-fiber + drei)
 - **Zustand**: 轻量级状态管理
 
 ## 📦 快速开始
@@ -147,6 +148,14 @@ vim .env
 - **相机**: 多相机图像流监控（支持压缩图像话题）
 - **GNSS/RTK**: GPS定位和RTK状态监控
 
+### SLAM可视化
+- **轨迹显示**: 实时机器人运动轨迹 (`/path`)
+- **位姿监控**: 当前里程计位姿 (`/aft_mapped_to_init`)
+- **点云地图**: 配准点云累积显示 (`/cloud_registered`)
+- **坐标系**: Z轴朝上的ROS标准右手坐标系
+- **Decay Time**: 可配置的点云衰减时间 (1-10000秒)
+- **RGB颜色**: 历史地图使用真实RGB颜色，当前帧红色高亮
+
 ### 系统控制
 - **数据采集控制**: 启动/停止数据采集（通过配置化脚本）
 - **录制控制**: 数据录制管理
@@ -154,7 +163,7 @@ vim .env
 
 ### 数据可视化
 - **实时图表**: ECharts图表展示
-- **3D可视化**: 点云和轨迹显示
+- **3D可视化**: Three.js点云和轨迹显示
 - **历史数据**: 数据回放和分析
 
 ## 🧪 测试
@@ -184,6 +193,7 @@ python test_end_to_end.py
 - [相机配置说明](Documents/CAMERA_CONFIGURATION.md)
 - [端口配置说明](Documents/PORT_CONFIGURATION.md)
 - [GNSS数据结构](Documents/GNSS消息数据结构分析文档.md)
+- [SLAM可视化模块](docs/SLAM_Visualization_Module.md) - SLAM开发文档
 - [API文档](http://localhost:8001/docs) - FastAPI自动生成
 
 ## 🔍 环境管理
@@ -234,8 +244,9 @@ cat environment_snapshot.txt
 ## 🚧 待开发功能 (TODO)
 
 ### 可视化增强
-- [ ] **位姿轨迹可视化**: 支持机器人位姿轨迹的实时显示和历史回放
-- [ ] **降采样激光点云地图**: 优化大规模点云数据的显示性能，支持点云降采样和地图构建
+- [x] **位姿轨迹可视化**: 支持机器人位姿轨迹的实时显示
+- [x] **点云地图累积**: 支持Decay Time配置的点云累积显示
+- [ ] **点云降采样优化**: 优化大规模点云数据的显示性能
 
 ### 时间同步模块
 - [ ] **PTP/NTP时间同步**: 支持高精度时间同步协议启动和配置

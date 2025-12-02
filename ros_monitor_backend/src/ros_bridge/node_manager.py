@@ -11,6 +11,9 @@ from src.ros_bridge.subscribers.lidar_subscriber import LidarSubscriber
 from src.ros_bridge.subscribers.imu_subscriber import ImuSubscriber
 from src.ros_bridge.subscribers.gnss_subscriber import GNSSSubscriber
 from src.ros_bridge.subscribers.navsatfix_subscriber import NavSatFixSubscriber
+from src.ros_bridge.subscribers.path_subscriber import PathSubscriber
+from src.ros_bridge.subscribers.odometry_subscriber import OdometrySubscriber
+from src.ros_bridge.subscribers.registered_cloud_subscriber import RegisteredCloudSubscriber
 from src.utils.camera_config_loader import camera_config
 
 logger = logging.getLogger(__name__)
@@ -45,6 +48,13 @@ class ROSNodeManager:
             # 备用NavSatFix话题(标准ROS消息,但信息缺失严重)
             {'topic': '/ublox_driver/receiver_lla', 'type': 'NavSatFix'}
         ]
+
+        # SLAM相关话题
+        self.slam_topics = {
+            'path': '/path',  # 运动轨迹
+            'odometry': '/aft_mapped_to_init',  # 当前位姿里程计
+            'registered_cloud': '/cloud_registered'  # 配准后的点云
+        }
         
     async def initialize(self):
         """初始化ROS节点"""
@@ -173,12 +183,58 @@ class ROSNodeManager:
             
             if not gnss_created:
                 logger.error("⚠️ 所有GNSS订阅器创建失败，将使用虚拟数据")
-            
+
+            # 设置SLAM相关订阅器
+            self._setup_slam_subscribers()
+
             logger.info(f"ROS subscribers setup completed. Total: {len(self.subscribers)}")
-            
+
         except Exception as e:
             logger.error(f"Failed to setup ROS subscribers: {e}")
-            
+
+    def _setup_slam_subscribers(self):
+        """设置SLAM相关订阅器"""
+        try:
+            # Path订阅器 - 运动轨迹
+            path_topic = self.slam_topics.get('path', '/path')
+            try:
+                subscriber = PathSubscriber(
+                    topic=path_topic,
+                    callback=lambda data, t=path_topic: self._update_data(t, data)
+                )
+                self.subscribers[path_topic] = subscriber
+                logger.info(f"✅ Path订阅器创建成功: {path_topic}")
+            except Exception as e:
+                logger.warning(f"❌ Path订阅器创建失败: {e}")
+
+            # Odometry订阅器 - 当前位姿
+            odom_topic = self.slam_topics.get('odometry', '/aft_mapped_to_init')
+            try:
+                subscriber = OdometrySubscriber(
+                    topic=odom_topic,
+                    callback=lambda data, t=odom_topic: self._update_data(t, data)
+                )
+                self.subscribers[odom_topic] = subscriber
+                logger.info(f"✅ Odometry订阅器创建成功: {odom_topic}")
+            except Exception as e:
+                logger.warning(f"❌ Odometry订阅器创建失败: {e}")
+
+            # RegisteredCloud订阅器 - 配准点云
+            cloud_topic = self.slam_topics.get('registered_cloud', '/cloud_registered')
+            try:
+                subscriber = RegisteredCloudSubscriber(
+                    topic=cloud_topic,
+                    callback=lambda data, t=cloud_topic: self._update_data(t, data),
+                    max_points=5000  # 限制点数
+                )
+                self.subscribers[cloud_topic] = subscriber
+                logger.info(f"✅ RegisteredCloud订阅器创建成功: {cloud_topic}")
+            except Exception as e:
+                logger.warning(f"❌ RegisteredCloud订阅器创建失败: {e}")
+
+        except Exception as e:
+            logger.error(f"Failed to setup SLAM subscribers: {e}")
+
     def _update_data(self, topic: str, data: Dict[str, Any]):
         """更新最新数据"""
         try:
@@ -396,7 +452,61 @@ class ROSNodeManager:
             'timestamp': time.time(),
             'sequence': self._test_gnss_counter
         }
-        
+
+    async def get_latest_slam_data(self) -> Optional[Dict[str, Any]]:
+        """获取最新SLAM数据(轨迹、位姿、点云)"""
+        slam_data = {}
+
+        # 获取Path数据
+        path_topic = self.slam_topics.get('path', '/path')
+        if path_topic in self.latest_data:
+            data = self.latest_data[path_topic]
+            if data and 'data' in data:
+                slam_data['path'] = data['data']
+
+        # 获取Odometry数据
+        odom_topic = self.slam_topics.get('odometry', '/aft_mapped_to_init')
+        if odom_topic in self.latest_data:
+            data = self.latest_data[odom_topic]
+            if data and 'data' in data:
+                slam_data['odometry'] = data['data']
+
+        # 获取RegisteredCloud数据
+        cloud_topic = self.slam_topics.get('registered_cloud', '/cloud_registered')
+        if cloud_topic in self.latest_data:
+            data = self.latest_data[cloud_topic]
+            if data and 'data' in data:
+                slam_data['registered_cloud'] = data['data']
+
+        return slam_data if slam_data else None
+
+    async def get_latest_path_data(self) -> Optional[Dict[str, Any]]:
+        """获取最新轨迹数据"""
+        path_topic = self.slam_topics.get('path', '/path')
+        if path_topic in self.latest_data:
+            data = self.latest_data[path_topic]
+            if data and 'data' in data:
+                return data['data']
+        return None
+
+    async def get_latest_odometry_data(self) -> Optional[Dict[str, Any]]:
+        """获取最新里程计/位姿数据"""
+        odom_topic = self.slam_topics.get('odometry', '/aft_mapped_to_init')
+        if odom_topic in self.latest_data:
+            data = self.latest_data[odom_topic]
+            if data and 'data' in data:
+                return data['data']
+        return None
+
+    async def get_latest_registered_cloud(self) -> Optional[Dict[str, Any]]:
+        """获取最新配准点云数据"""
+        cloud_topic = self.slam_topics.get('registered_cloud', '/cloud_registered')
+        if cloud_topic in self.latest_data:
+            data = self.latest_data[cloud_topic]
+            if data and 'data' in data:
+                return data['data']
+        return None
+
     def is_connected(self) -> bool:
         """检查ROS连接状态"""
         return self._running and self._initialized and not rospy.is_shutdown()

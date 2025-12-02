@@ -278,7 +278,40 @@ async def background_broadcast():
                     logger.info(f"GNSS数据已广播, RTK状态: {gnss_data.get('rtk_status', 'UNKNOWN')}, 卡星数: {gnss_data.get('quality', {}).get('num_sv', 0)}")
                 else:
                     logger.debug("没有GNSS数据可广播")
-                    
+
+                # 广播SLAM数据(轨迹、位姿、点云)
+                slam_data = await ros_manager.get_latest_slam_data()
+                if slam_data:
+                    # 广播Path数据
+                    if 'path' in slam_data:
+                        message = {
+                            "type": "slam_path",
+                            "data": slam_data['path'],
+                            "timestamp": time.time()
+                        }
+                        await connection_manager.broadcast_to_subscribers("slam", message)
+                        logger.debug(f"Path数据已广播, 点数: {slam_data['path'].get('total_poses', 0)}")
+
+                    # 广播Odometry数据
+                    if 'odometry' in slam_data:
+                        message = {
+                            "type": "slam_odometry",
+                            "data": slam_data['odometry'],
+                            "timestamp": time.time()
+                        }
+                        await connection_manager.broadcast_to_subscribers("slam", message)
+                        logger.debug(f"Odometry数据已广播")
+
+                    # 广播RegisteredCloud数据
+                    if 'registered_cloud' in slam_data:
+                        message = {
+                            "type": "slam_cloud",
+                            "data": slam_data['registered_cloud'],
+                            "timestamp": time.time()
+                        }
+                        await connection_manager.broadcast_to_subscribers("slam", message)
+                        logger.debug(f"RegisteredCloud数据已广播, 点数: {slam_data['registered_cloud'].get('sampled_points', 0)}")
+
         except Exception as e:
             logger.error(f"Background broadcast error: {e}")
         

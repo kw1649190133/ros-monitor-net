@@ -6,7 +6,8 @@ import {
   WifiOutlined,
   SettingOutlined,
   VideoCameraOutlined,
-  AimOutlined
+  AimOutlined,
+  NodeIndexOutlined
 } from '@ant-design/icons';
 import { useSystemStore } from '../../stores/useSystemStore';
 
@@ -28,6 +29,11 @@ export const Sidebar: React.FC = () => {
       key: 'gnss',
       icon: <AimOutlined />,
       label: 'GNSS监控',
+    },
+    {
+      key: 'slam',
+      icon: <NodeIndexOutlined />,
+      label: 'SLAM可视化',
     },
     {
       key: 'data-collection',

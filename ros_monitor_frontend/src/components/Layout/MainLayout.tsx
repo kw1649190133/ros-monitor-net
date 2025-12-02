@@ -7,6 +7,7 @@ import { ConnectionStatus } from '../Dashboard/ConnectionStatus';
 import CameraMonitor from '../CameraMonitor';
 import DataCollectionControl from '../Sensors/DataCollectionControl';
 import GNSSStatusPanel from '../Sensors/GNSSStatusPanel';
+import SLAMMonitor from '../SLAM/SLAMMonitor';
 import { useSystemStore } from '../../stores/useSystemStore';
 import { apiService } from '../../services/api';
 import { wsService } from '../../services/websocket';
@@ -58,6 +59,8 @@ export const MainLayout: React.FC = () => {
         return <CameraMonitor />;
       case 'gnss':
         return <GNSSStatusPanel />;
+      case 'slam':
+        return <SLAMMonitor />;
       case 'connection':
         return <ConnectionStatus />;
       case 'data-collection':
