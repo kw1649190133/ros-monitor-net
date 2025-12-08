@@ -1,6 +1,6 @@
 # ROS监控系统 (ROS Monitor System)
 
-一个基于FastAPI和React的多传感器融合监控平台，专为IKing Handbot机器人项目设计，支持激光雷达、IMU、相机等传感器数据的实时监控和可视化。
+一个基于FastAPI和React的多传感器融合监控平台，专为Handbot机器人项目设计，支持激光雷达、IMU、相机等传感器数据的实时监控和可视化。
 
 ## 🚀 项目特性
 
@@ -17,34 +17,34 @@
 
 ### 系统监控演示
 
-点击下方观看完整视频演示：
+<div align="center">
+  <a href="https://www.bilibili.com/video/BV1mb2iBwE1B">
+    <img src="https://i0.hdslb.com/bfs/archive/BV1mb2iBwE1B.jpg" alt="ROS Monitor System 演示" style="max-width:100%;">
+  </a>
+  <p><em>点击图片观看完整视频</em></p>
+</div>
 
-[![ROS Monitor System 演示](https://img.shields.io/badge/Bilibili-系统监控演示-FF69B4?style=for-the-badge&logo=youtube)](https://www.bilibili.com/video/BV1mb2iBwE1B/?spm_id_from=333.1387.homepage.video_card.click)
+<iframe src="//player.bilibili.com/player.html?bvid=BV1mb2iBwE1B&page=1&autoplay=0" scrolling="no" border="0" frameborder="no" framespacing="0" allowfullscreen="true" width="100%" height="600" style="max-width: 100%;"> </iframe>
 
-视频展示内容：
+**视频展示内容**：
 - 实时相机流显示
 - 激光雷达点云可视化
 - SLAM轨迹和地图显示
 - 多传感器数据监控
 - 系统状态和控制界面
 
-## 🔧 硬件设备
+---
 
-### IKing HandBot 手持扫描仪
+### HandBot 手持扫描仪使用演示
 
-![HandBot设备](pictures/HandBot.png)
+<div align="center">
+  <a href="https://www.bilibili.com/video/BV11okZBmESZ">
+    <img src="https://i0.hdslb.com/bfs/archive/BV11okZBmESZ.jpg" alt="HandBot 使用效果" style="max-width:100%;">
+  </a>
+  <p><em>点击图片观看完整视频</em></p>
+</div>
 
-**设备特性**：
-- 多传感器集成平台（激光雷达、IMU、相机、GNSS等）
-- 实时数据融合与处理
-- 便携式设计，支持手持操作
-- 高精度SLAM定位能力
-
-### 使用效果演示
-
-[![HandBot 使用效果](https://img.shields.io/badge/Bilibili-使用效果演示-FF69B4?style=for-the-badge&logo=youtube)](https://www.bilibili.com/video/BV11okZBmESZ/?spm_id_from=333.1387.homepage.video_card.click)
-
-![使用效果](pictures/HandBot_Video.png)
+<iframe src="//player.bilibili.com/player.html?bvid=BV11okZBmESZ&page=1&autoplay=0" scrolling="no" border="0" frameborder="no" framespacing="0" allowfullscreen="true" width="100%" height="600" style="max-width: 100%;"> </iframe>
 
 ## 🏗️ 系统架构
 
