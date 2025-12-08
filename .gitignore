@@ -4,83 +4,22 @@ __pycache__/
 *$py.class
 *.so
 .Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
 *.egg-info/
-.installed.cfg
 *.egg
-MANIFEST
-
-# Virtual environments
-.env
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
-
-# Node.js
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-lerna-debug.log*
-.pnpm-debug.log*
-
-# Build outputs
 dist/
 build/
-*.tsbuildinfo
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# OS
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-
-# ROS
-*.bag
-*.bag.active
-
-# Logs
-*.log
-logs/
-
-# Temporary files
-*.tmp
-*.temp
-*.bak
-
-# Environment variables
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
-# Coverage reports
-htmlcov/
+.venv/
+venv/
+env/
+ENV/
+*.pyc
+*.pyo
+*.pyd
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
 .tox/
+.nox/
 .coverage
 .coverage.*
 .cache
@@ -89,62 +28,130 @@ coverage.xml
 *.cover
 .hypothesis/
 .pytest_cache/
-
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# pyenv
-.python-version
-
-# pipenv
-Pipfile.lock
-
-# PEP 582
-__pypackages__/
-
-# Celery
-celerybeat-schedule
-celerybeat.pid
-
-# SageMath parsed files
-*.sage.py
-
-# Spyder project settings
-.spyderproject
-.spyproject
-
-# Rope project settings
-.ropeproject
-
-# mkdocs documentation
-/site
-
-# mypy
+pytest_cache/
+*.mo
+*.pot
 .mypy_cache/
 .dmypy.json
 dmypy.json
-
-# Pyre type checker
 .pyre/
 
-# ROS specific
-*.bag
-*.bag.active
-*.bag.bak
-*.bag.info
-*.bag.orig
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+.pnp/
+.pnp.js
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+.npm
+.eslintcache
+.node_repl_history
+*.tsbuildinfo
+.yarn-integrity
 
-# Camera debug images
-debug_images/
-test_image_*.jpg
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
 
-# Backend logs
-backend.log
+# 环境配置
+.env
+.env.local
+.env.*.local
 
-# Frontend build artifacts
+# 日志
+*.log
+logs/
+/tmp/
+
+# 构建输出
 ros_monitor_frontend/dist/
 ros_monitor_frontend/build/
+ros_monitor_frontend/.vite/
+ros_monitor_frontend/.next/
+ros_monitor_frontend/out/
+handbot-app/.next/
+handbot-app/out/
 
-# System files
-.claude/
-*.png
+# 测试
+.coverage
+htmlcov/
+.pytest_cache/
+test-results/
+*.test.js.snap
+.nyc_output/
+coverage/
+*.lcov
+
+# ROS
+devel/
+build/
+install/
+log/
+*.bag
+*.bag.active
+*.bag.orig
+*.bag.bak
+CMakeLists.txt.user
+.catkin_workspace
+.catkin_tools/
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 项目特定
+environment_snapshot.txt
+*.pid
+
+# 项目文档和脚本（本地保留，不上传）
+docs/
+script/
+
+# 调试和临时文件
+debug_images*/
+test_image_*.jpg
+test_image_*.png
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*~
+.*.swp
+.*.swo
+
+# 数据文件
+*.csv
+*.db
+*.sqlite
+*.sqlite3
+
+# 媒体文件（如果是测试生成的）
+# *.jpg
+# *.jpeg
+# *.png
+# *.gif
+# *.mp4
+# *.avi
+
+# 编辑器和工具
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+.history/
+.ionide/
+
+# 文档生成
+_build/
+_static/
+_templates/
+site/
