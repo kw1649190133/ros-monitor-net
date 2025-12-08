@@ -13,6 +13,39 @@
 - **配置化管理**: 灵活的YAML配置文件支持
 - **快速部署**: 一键部署脚本和环境检查工具
 
+## 🎥 视频效果展示
+
+### 系统监控演示
+
+点击下方观看完整视频演示：
+
+[![ROS Monitor System 演示](https://img.shields.io/badge/Bilibili-系统监控演示-FF69B4?style=for-the-badge&logo=youtube)](https://www.bilibili.com/video/BV1mb2iBwE1B/?spm_id_from=333.1387.homepage.video_card.click)
+
+视频展示内容：
+- 实时相机流显示
+- 激光雷达点云可视化
+- SLAM轨迹和地图显示
+- 多传感器数据监控
+- 系统状态和控制界面
+
+## 🔧 硬件设备
+
+### IKing HandBot 手持扫描仪
+
+![HandBot设备](pictures/HandBot.png)
+
+**设备特性**：
+- 多传感器集成平台（激光雷达、IMU、相机、GNSS等）
+- 实时数据融合与处理
+- 便携式设计，支持手持操作
+- 高精度SLAM定位能力
+
+### 使用效果演示
+
+[![HandBot 使用效果](https://img.shields.io/badge/Bilibili-使用效果演示-FF69B4?style=for-the-badge&logo=youtube)](https://www.bilibili.com/video/BV11okZBmESZ/?spm_id_from=333.1387.homepage.video_card.click)
+
+![使用效果](pictures/HandBot_Video.png)
+
 ## 🏗️ 系统架构
 
 ```
