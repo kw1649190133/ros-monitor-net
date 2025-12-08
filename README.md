@@ -1,6 +1,6 @@
 # ROS监控系统 (ROS Monitor System)
 
-一个基于FastAPI和React的多传感器融合监控平台，专为Handbot机器人项目设计，支持激光雷达、IMU、相机等传感器数据的实时监控和可视化。
+扫的准，更要看的清——让每一次扫描都心中有数！一个基于FastAPI和React的多传感器融合监控平台，专为Handbot机器人项目设计，支持激光雷达、IMU、相机等传感器数据的实时监控和可视化。
 
 ## 🚀 项目特性
 
@@ -19,12 +19,10 @@
 
 <div align="center">
   <a href="https://www.bilibili.com/video/BV1mb2iBwE1B">
-    <img src="https://i0.hdslb.com/bfs/archive/BV1mb2iBwE1B.jpg" alt="ROS Monitor System 演示" style="max-width:100%;">
+    <img src="pictures/ROS_Monitor.jpg" alt="ROS Monitor System 演示" width="800">
   </a>
-  <p><em>点击图片观看完整视频</em></p>
+  <p><em>👆 点击图片观看完整视频演示</em></p>
 </div>
-
-<iframe src="//player.bilibili.com/player.html?bvid=BV1mb2iBwE1B&page=1&autoplay=0" scrolling="no" border="0" frameborder="no" framespacing="0" allowfullscreen="true" width="100%" height="600" style="max-width: 100%;"> </iframe>
 
 **视频展示内容**：
 - 实时相机流显示
@@ -39,12 +37,10 @@
 
 <div align="center">
   <a href="https://www.bilibili.com/video/BV11okZBmESZ">
-    <img src="https://i0.hdslb.com/bfs/archive/BV11okZBmESZ.jpg" alt="HandBot 使用效果" style="max-width:100%;">
+    <img src="pictures/HandBot_Video.png" alt="HandBot 使用效果" width="800">
   </a>
-  <p><em>点击图片观看完整视频</em></p>
+  <p><em>👆 点击图片观看完整视频演示</em></p>
 </div>
-
-<iframe src="//player.bilibili.com/player.html?bvid=BV11okZBmESZ&page=1&autoplay=0" scrolling="no" border="0" frameborder="no" framespacing="0" allowfullscreen="true" width="100%" height="600" style="max-width: 100%;"> </iframe>
 
 ## 🏗️ 系统架构
 
