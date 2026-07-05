@@ -49,14 +49,13 @@ echo ""
 # 3. 配置环境变量
 echo "=== 步骤 3: 配置环境变量 ==="
 if [ ! -f ".env" ]; then
-    if [ -f ".env.example" ]; then
-        cp .env.example .env
-        echo "✓ 已创建 .env 文件"
+    if [ -f "ros_monitor_backend/.env.example" ]; then
+        cp ros_monitor_backend/.env.example ros_monitor_backend/.env
+        echo "✓ 已创建 .env 文件 (ros_monitor_backend/.env)"
         echo "⚠️  请编辑 .env 文件配置您的环境"
         echo "   主要配置项："
-        echo "   - ROS_MASTER_URI: ROS Master地址"
-        echo "   - ROS_IP: 本机IP地址"
-        echo "   - VITE_API_HOST: 前端访问后端的地址"
+        echo "   - ROSBRIDGE_HOST: rosbridge 服务器地址（机器人IP）"
+        echo "   - ROSBRIDGE_PORT: rosbridge 端口（默认 9090）"
     else
         echo "⚠️  .env.example 文件不存在，跳过"
     fi
@@ -102,20 +101,18 @@ fi
 cd ..
 echo ""
 
-# 6. 验证ROS环境
-echo "=== 步骤 6: 验证ROS环境 ==="
-if [ -z "$ROS_DISTRO" ]; then
-    echo "⚠️  ROS环境未加载"
-    if [ -f "/opt/ros/noetic/setup.bash" ]; then
-        echo "   请运行: source /opt/ros/noetic/setup.bash"
-    elif [ -f "/opt/ros/melodic/setup.bash" ]; then
-        echo "   请运行: source /opt/ros/melodic/setup.bash"
-    else
-        echo "   ROS未安装，请访问: http://wiki.ros.org/noetic/Installation/Ubuntu"
-    fi
-else
-    echo "✓ ROS环境已加载: $ROS_DISTRO"
-fi
+# 6. 检查 rosbridge 配置
+echo "=== 步骤 6: 检查 rosbridge 配置 ==="
+echo "后端使用 rosbridge WebSocket 远程连接机器人 ROS 系统"
+echo ""
+echo "机器人端需要:"
+echo "  1. 安装 rosbridge: sudo apt-get install ros-<distro>-rosbridge-suite"
+echo "  2. 启动: roslaunch rosbridge_server rosbridge_websocket.launch"
+echo ""
+echo "服务器端配置:"
+echo "  编辑 ros_monitor_backend/.env"
+echo "  ROSBRIDGE_HOST=<机器人IP>"
+echo ""
 echo ""
 
 # 7. 完成
@@ -125,25 +122,18 @@ echo "=========================================="
 echo ""
 echo "下一步操作："
 echo ""
-echo "1. 配置环境变量（如果还未配置）："
-echo "   vim .env"
+echo "1. 配置 rosbridge 连接地址："
+echo "   vim ros_monitor_backend/.env"
+echo "   (设置 ROSBRIDGE_HOST=机器人IP)"
 echo ""
-echo "2. 确保ROS环境已加载："
-echo "   source /opt/ros/noetic/setup.bash"
-echo ""
-echo "3. 启动后端服务："
+echo "2. 启动后端服务："
 echo "   cd ros_monitor_backend"
 echo "   ./start_backend.sh"
 echo ""
-echo "4. 启动前端服务（新终端）："
+echo "3. 启动前端服务（新终端）："
 echo "   cd ros_monitor_frontend"
-echo "   ./start_frontend.sh"
+echo "   npm run dev"
 echo ""
-echo "5. 访问系统："
+echo "4. 访问系统："
 echo "   http://localhost:5173"
-echo ""
-echo "📚 更多信息请参考："
-echo "   - environment.yml (环境规格文件)"
-echo "   - .env (环境配置)"
-echo "   - Documents/ (项目文档)"
 echo ""

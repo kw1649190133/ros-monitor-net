@@ -1,201 +1,221 @@
-# ROS监控系统 (ROS Monitor System)
+# ROS Monitor (ros-monitor-net)
 
-扫的准，更要看的清——让每一次扫描都心中有数！一个基于FastAPI和React的多传感器融合监控平台，专为Handbot机器人项目设计，支持激光雷达、IMU、相机等传感器数据的实时监控和可视化。
+基于 FastAPI + React 的多传感器融合远程监控平台。支持激光雷达、IMU、相机、GNSS/RTK 等传感器数据的实时可视化，机器人端通过 WebSocket 主动推送数据到服务器，适配 WiFi / 移动网络等动态 IP 场景。
 
 ## 🚀 项目特性
 
-- **实时数据监控**: 支持ROS话题的实时订阅和数据流
-- **多传感器支持**: 激光雷达、IMU、相机、GNSS/RTK等多种传感器
-- **WebSocket通信**: 实时数据推送和双向通信
-- **现代化前端**: 基于React + TypeScript + Ant Design
-- **RESTful API**: 完整的后端API接口
-- **系统监控**: 算法启停控制、录制控制、系统状态监控
-- **配置化管理**: 灵活的YAML配置文件支持
-- **快速部署**: 一键部署脚本和环境检查工具
-
-## 🎥 视频效果展示
-
-### 系统监控演示
-
-<div align="center">
-  <a href="https://www.bilibili.com/video/BV1mb2iBwE1B">
-    <img src="pictures/ROS_Monitor.jpg" alt="ROS Monitor System 演示" width="800">
-  </a>
-  <p><em>👆 点击图片观看完整视频演示</em></p>
-</div>
-
-**视频展示内容**：
-- 实时相机流显示
-- 激光雷达点云可视化
-- SLAM轨迹和地图显示
-- 多传感器数据监控
-- 系统状态和控制界面
-
----
-
-### HandBot 手持扫描仪使用演示
-
-<div align="center">
-  <a href="https://www.bilibili.com/video/BV11okZBmESZ">
-    <img src="pictures/HandBot_Video.png" alt="HandBot 使用效果" width="800">
-  </a>
-  <p><em>👆 点击图片观看完整视频演示</em></p>
-</div>
+- **实时数据监控**: ROS1 / ROS2 话题实时采集和可视化
+- **多传感器支持**: 激光雷达、IMU、相机、GNSS/RTK、SLAM 轨迹与点云地图
+- **推送架构**: 机器人主动连接服务器上报数据，无需固定 IP 或端口映射
+- **WebSocket 通信**: 实时双向数据推送
+- **现代化前端**: React + TypeScript + Ant Design + Three.js 3D 点云
+- **RESTful API**: 完整后端 API + Swagger 文档
+- **模拟测试**: 提供 mock_robot_test.py 无 ROS 环境下模拟数据验证
 
 ## 🏗️ 系统架构
 
 ```
-ROS Monitor System
-├── ros_monitor_backend/     # FastAPI后端服务
-│   ├── src/                # 核心源代码
-│   ├── config/             # 配置文件(YAML)
-│   ├── tests/              # 测试文件
-│   └── requirements.txt    # Python依赖
-├── ros_monitor_frontend/   # React前端应用
-│   ├── src/                # 前端源代码
-│   └── package.json        # Node.js依赖
-├── script/                 # 数据采集脚本
-├── Documents/              # 项目文档
-├── environment.yml         # 环境规格文件
-├── .env.example            # 环境变量模板
-├── deploy.sh               # 一键部署脚本
-├── check_environment.sh    # 环境检查脚本
-└── export_environment.sh   # 环境快照导出
+┌─────────────────────┐                    ┌──────────────────────┐
+│   机器人端 (ROS)      │   WebSocket 推送    │   服务器端             │
+│                      │ ════════════════►  │                      │
+│  robot_agent.py      │   ws://server/     │  FastAPI (:801)      │
+│  (rospy 订阅话题)     │   ws/robot/{id}    │  + Nginx (:80)       │
+│                      │                    │  + 前端静态文件        │
+│  robot_agent_ros2.py │                    │                      │
+│  (rclpy 订阅话题)     │                    │  浏览器               │
+│                      │                    │  http://server/      │
+│  传感器驱动           │                    │  /ros-monitor/       │
+│  + livox_ros_driver  │                    │                      │
+└─────────────────────┘                    └──────────────────────┘
+```
+
+**数据流**: 机器人 `robot_agent` → WebSocket → 服务器 `latest_data` → `background_broadcast` → 浏览器
+
+**备选模式**: 也支持传统 rosbridge 模式（服务器主动连接机器人 rosbridge_server），详见 `.env` 配置。
+
+## 📁 项目结构
+
+```
+ros-monitor/
+├── ros_monitor_backend/          # FastAPI 后端
+│   ├── src/
+│   │   ├── main.py               # 入口：WebSocket 端点 + 广播
+│   │   ├── ros_bridge/
+│   │   │   ├── rosbridge_client.py   # rosbridge WebSocket 客户端
+│   │   │   ├── pointcloud_parser.py  # PointCloud2 二进制解析
+│   │   │   └── node_manager.py       # 话题订阅与数据管理
+│   │   ├── api/v1/               # REST API 路由
+│   │   ├── websocket/            # 浏览器连接管理
+│   │   └── utils/                # 工具函数
+│   ├── config/                   # YAML 配置文件
+│   ├── .env.example              # 环境变量模板
+│   └── requirements.txt          # Python 依赖
+├── ros_monitor_frontend/         # React 前端
+│   └── src/
+├── robot_agent.py                # 机器人端代理 (ROS1)
+├── robot_agent_ros2.py           # 机器人端代理 (ROS2)
+├── mock_robot_test.py            # 模拟机器人测试脚本
+├── robot_setup.sh                # 机器人端部署指引
+├── deploy.sh                     # 服务器端部署脚本
+├── start_monitor_system.sh       # 一键启动脚本 (本地开发)
+└── README.md
 ```
 
 ## 🛠️ 技术栈
 
 ### 后端
-- **FastAPI**: 现代Python Web框架
-- **WebSocket**: 实时双向通信
-- **ROS集成**: rospy, cv_bridge, gnss_comm等
-- **数据处理**: OpenCV, NumPy
-- **配置管理**: PyYAML配置文件支持
+- **FastAPI**: Python Web 框架 + Uvicorn
+- **roslibpy**: rosbridge WebSocket 客户端（备选模式）
+- **OpenCV / NumPy**: 图像与数据处理
 
 ### 前端
-- **React 19**: 最新版本React框架
-- **TypeScript**: 类型安全的JavaScript
-- **Ant Design**: 企业级UI组件库
-- **ECharts**: 数据可视化图表
-- **Three.js**: 3D可视化 (react-three-fiber + drei)
+- **React 19 + TypeScript**: 前端框架
+- **Ant Design**: UI 组件库
+- **Three.js** (react-three-fiber): 3D 点云与轨迹可视化
 - **Zustand**: 轻量级状态管理
+
+### 机器人端
+- **robot_agent.py**: rospy (ROS1)
+- **robot_agent_ros2.py**: rclpy (ROS2) + websocket-client
+- 无需 rosbridge，直接 WebSocket 推送
 
 ## 📦 快速开始
 
 ### 环境要求
-- Python 3.8+
-- Node.js 18+
-- ROS Noetic/Melodic
-- Ubuntu 20.04+
+- 服务器: Python 3.8+、Node.js 18+（无需 ROS）
+- 机器人: ROS1 (rospy) 或 ROS2 (rclpy) + websocket-client
+- 浏览器: 现代浏览器
 
-### 方法1: 自动化部署（推荐）
+### 步骤 1: 服务器端部署
 
 ```bash
-# 1. 克隆项目
-git clone <repository-url>
-cd ROS_monitor
+# 克隆项目
+git clone https://github.com/kw1649190133/ros-monitor-net.git
+cd ros-monitor-net
 
-# 2. 检查环境
-./check_environment.sh
-
-# 3. 一键部署
+# 部署（安装 Python/Node 依赖）
 ./deploy.sh
 
-# 4. 配置环境变量
-cp .env.example .env
-vim .env  # 修改配置
+# 配置
+cp ros_monitor_backend/.env.example ros_monitor_backend/.env
+# 无需修改 .env（推送模式下不需要 ROSBRIDGE_HOST）
 
-# 5. 启动服务
-cd ros_monitor_backend && ./start_backend.sh
-cd ros_monitor_frontend && ./start_frontend.sh
+# 启动后端
+cd ros_monitor_backend && ./start_backend.sh   # 或: systemctl start ros-monitor-backend
+
+# 构建前端
+cd ../ros_monitor_frontend
+npm install && npm run build
+
+# 部署到 Nginx
+# 参考 deploy.sh 中的 Nginx 配置示例
 ```
 
-### 方法2: 手动部署
+### 步骤 2: 机器人端启动
 
-#### 2.1 启动后端服务
+**ROS1:**
 ```bash
-cd ros_monitor_backend
-
-# 创建虚拟环境
-python3 -m venv .venv
-source .venv/bin/activate
-
-# 安装依赖
-pip install -r requirements.txt
-
-# 启动服务
-./start_backend.sh
+pip install websocket-client
+source /opt/ros/noetic/setup.bash
+python3 robot_agent.py --server ws://<服务器IP> --robot-id myrobot
 ```
 
-#### 2.2 启动前端应用
+**ROS2:**
 ```bash
-cd ros_monitor_frontend
-
-# 安装依赖
-npm install
-
-# 开发模式
-npm run dev
-
-# 生产构建
-npm run build
+pip install sensor-msgs-py websocket-client
+source /opt/ros/humble/setup.bash
+python3 robot_agent_ros2.py --server ws://<服务器IP> --robot-id myrobot
 ```
+
+机器人启动后，前端健康检查显示 `ros_ready: true` 即连接成功。
+
+### 步骤 3: 模拟测试（无 ROS 环境）
+
+```bash
+pip install websocket-client numpy opencv-python
+python mock_robot_test.py --server <服务器IP> --robot-id test-bot
+```
+
+生成模拟的 LiDAR 点云、IMU、相机、GNSS、SLAM 轨迹数据推送到服务器，验证端到端管道。
+
+### 步骤 4: 访问系统
+
+打开浏览器访问 `http://<服务器IP>/ros-monitor/`。
+
+### 已部署实例
+
+- **服务器**: 43.136.76.169
+- **前端**: http://43.136.76.169/ros-monitor/
+- **API 健康检查**: http://43.136.76.169/api/v1/health
 
 ## 🔧 配置说明
 
-### 环境变量配置
-复制 `.env.example` 为 `.env` 并修改配置：
-```bash
-cp .env.example .env
-vim .env
+### 概念
+
+项目支持两种数据接入模式：
+
+| 模式 | 方向 | 适用场景 | 配置 |
+|------|------|----------|------|
+| **推送模式**（默认） | 机器人 → 服务器 | 机器人 IP 不固定 | 默认，无需配置 |
+| **rosbridge 模式**（备选） | 服务器 → 机器人 | 机器人 IP 固定，需精细控制 | 设置 `ROSBRIDGE_HOST` |
+
+### 环境变量 (.env)
+
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `ROSBRIDGE_HOST` | rosbridge 服务器地址（备选模式） | localhost |
+| `ROSBRIDGE_PORT` | rosbridge 端口（备选模式） | 9090 |
+| `ROS_MONITOR_PORT` | 后端服务端口 | 8001 |
+
+### 后端
+- 默认端口: 8001
+- WebSocket 端点:
+  - `/ws/robot/{robot_id}` — 机器人数据上报
+  - `/ws/{client_id}` — 浏览器客户端
+- API 文档: `http://localhost:8001/docs`
+- 配置文件: `ros_monitor_backend/config/`
+
+### 机器人端参数
+
+```
+--server   服务器地址（默认: ws://43.136.76.169，走 80 端口 Nginx 代理）
+--robot-id 机器人标识（默认: 主机名）
 ```
 
-主要配置项：
-- `ROS_MASTER_URI`: ROS Master地址
-- `ROS_IP`: 本机IP地址
-- `ROS_MONITOR_PORT`: 后端服务端口（默认8001）
-- `VITE_API_HOST`: 前端访问后端的地址
-
-### 后端配置
-- 默认端口: 8001 (可通过环境变量或 --port 参数修改)
-- WebSocket端点: `/ws/{client_id}`
-- API文档: `http://localhost:8001/docs`
-- 配置文件目录: `ros_monitor_backend/config/`
-  - `camera_topics.yaml`: 相机话题配置
-  - `data_collection.yaml`: 数据采集脚本配置
-
-### 前端配置
+### 前端
 - 开发端口: 5173
-- 构建输出: `dist/`目录
-- 代理配置: `vite.config.ts`
+- 构建: `npm run build`，输出 `dist/`
+- 自动检测 API 地址（与浏览器同源）
 
-## 📊 功能模块
+## 📊 订阅话题
 
-### 传感器监控
-- **激光雷达**: 点云数据实时显示
-- **IMU**: 姿态和运动数据监控
-- **相机**: 多相机图像流监控（支持压缩图像话题）
-- **GNSS/RTK**: GPS定位和RTK状态监控
+### LiDAR
+- 话题: `/livox/lidar` (sensor_msgs/PointCloud2)
+- 每帧最多采样 5000 个点 (x/y/z)
+- 支持 Livox Mid-360 / Mid-70 等
 
-### SLAM可视化
-- **轨迹显示**: 实时机器人运动轨迹 (`/path`)
-- **位姿监控**: 当前里程计位姿 (`/aft_mapped_to_init`)
-- **点云地图**: 配准点云累积显示 (`/cloud_registered`)
-- **坐标系**: Z轴朝上的ROS标准右手坐标系
-- **Decay Time**: 可配置的点云衰减时间 (1-10000秒)
-- **RGB颜色**: 历史地图使用真实RGB颜色，当前帧红色高亮
+### IMU
+- 话题: `/livox/imu` (sensor_msgs/Imu)
 
-### 系统控制
-- **数据采集控制**: 启动/停止数据采集（通过配置化脚本）
-- **录制控制**: 数据录制管理
-- **状态监控**: 系统运行状态和连接状态
+### 相机
+- 话题: `/left_camera/image/compressed`, `/rgb_img/compressed` (CompressedImage)
+- 可通过 `config/camera_topics.yaml` 配置
 
-### 数据可视化
-- **实时图表**: ECharts图表展示
-- **3D可视化**: Three.js点云和轨迹显示
-- **历史数据**: 数据回放和分析
+### GNSS / RTK
+- 话题: `/ublox_driver/receiver_lla` (NavSatFix)
+- 兼容: `/ublox_driver/receiver_pvt` (GnssPVTSolnMsg)
+
+### SLAM
+- 轨迹: `/path` (nav_msgs/Path)
+- 里程计: `/aft_mapped_to_init` (nav_msgs/Odometry)
+- 配准点云: `/cloud_registered` (sensor_msgs/PointCloud2)
 
 ## 🧪 测试
+
+### 模拟机器人
+```bash
+python mock_robot_test.py --server 43.136.76.169 --robot-id test-bot
+```
 
 ### 后端测试
 ```bash
@@ -207,109 +227,45 @@ python -m pytest tests/
 ```bash
 cd ros_monitor_frontend
 npm run lint
-npm test
 ```
-
-### 端到端测试
-```bash
-python test_end_to_end.py
-```
-
-## 📚 文档
-
-- [环境规格文件](environment.yml) - 依赖版本说明
-- [部署指南](Documents/) - 快速部署文档
-- [相机配置说明](Documents/CAMERA_CONFIGURATION.md)
-- [端口配置说明](Documents/PORT_CONFIGURATION.md)
-- [GNSS数据结构](Documents/GNSS消息数据结构分析文档.md)
-- [SLAM可视化模块](docs/SLAM_Visualization_Module.md) - SLAM开发文档
-- [API文档](http://localhost:8001/docs) - FastAPI自动生成
-
-## 🔍 环境管理
-
-### 导出当前环境
-```bash
-./export_environment.sh
-cat environment_snapshot.txt
-```
-
-### 检查环境状态
-```bash
-./check_environment.sh
-```
-
-### 环境规格说明
-详见 `environment.yml` 文件，包含：
-- 系统要求
-- 运行时版本
-- Python依赖
-- Node.js依赖
-- ROS包依赖
-
-## 🤝 贡献指南
-
-1. Fork项目
-2. 创建功能分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (遵循 [Conventional Commits](https://www.conventionalcommits.org/) 规范)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 创建Pull Request
-
-## 📄 许可证
-
-本项目采用MIT许可证 - 查看 [LICENSE](LICENSE) 文件了解详情
-
-## 🙏 致谢
-
-- IKing Handbot项目团队
-- ROS社区
-- FastAPI和React开源社区
-
-## 📞 联系方式
-
-- 项目维护者: YCS
-- 项目地址: [GitHub Repository]
-- 问题反馈: [Issues]
-
-## 🚧 待开发功能 (TODO)
-
-### 可视化增强
-- [x] **位姿轨迹可视化**: 支持机器人位姿轨迹的实时显示
-- [x] **点云地图累积**: 支持Decay Time配置的点云累积显示
-- [ ] **点云降采样优化**: 优化大规模点云数据的显示性能
-
-### 时间同步模块
-- [ ] **PTP/NTP时间同步**: 支持高精度时间同步协议启动和配置
-- [ ] **同步信息统计**: 实时显示时间同步状态和统计信息
-- [ ] **时间同步延时监控**: 监控和可视化时间同步延迟指标
-
-### 数据管理
-- [ ] **录制数据命名**: 支持为录制数据自定义名称并保存，便于后续检索和管理
 
 ## 🚨 常见问题
 
-### 端口被占用
-后端服务会自动检测并使用可用端口（8001-8100），如需指定端口：
+### 连接被拒绝 (403)
+1. 确认使用端口 80 而非 801（外网只开放 80）: `--server ws://<IP>` 不带端口号
+2. 确认后端已更新到包含 `robot_websocket_endpoint` 的版本
+3. 检查服务器: `curl http://<IP>/api/v1/health`，确认 `ros_ready: true`
+
+### 前端 3D 点云不显示
+1. 点击左侧菜单 "LiDAR" 进入点云页面
+2. 确认机器人端已发布话题数据
+3. 首次连接需等待约 3-5 秒数据累积
+
+### 后端启动失败（端口被占用）
 ```bash
-export ROS_MONITOR_PORT=8002
-./start_backend.sh
+# 查看占用进程
+lsof -i :801
+# 强制释放后重启
+kill $(lsof -ti :801) && systemctl restart ros-monitor-backend
 ```
 
-### GNSS功能不可用
-GNSS功能需要 `gnss_comm` 包，必须从源码编译：
-```bash
-cd /path/to/ublox_ws
-source devel/setup.bash
-```
+### ROS2 QoS 不匹配
+Livox ROS2 驱动默认使用 BEST_EFFORT 可靠性。如果遇到 IMU/LiDAR 无数据，检查 `robot_agent_ros2.py` 中 `_sensor_qos` 的 `reliability` 设置。
 
-### 相机话题配置
-编辑 `ros_monitor_backend/config/camera_topics.yaml` 配置相机话题。
+## 📚 文档
 
-### 数据采集脚本路径
-编辑 `ros_monitor_backend/config/data_collection.yaml` 配置脚本路径。
+- [API 文档](http://43.136.76.169/docs) — FastAPI Swagger UI
+- 配置文件: `ros_monitor_backend/config/`
+  - `camera_topics.yaml` — 相机话题配置
+  - `data_collection.yaml` — 数据采集脚本
 
----
+## 🤝 贡献
 
-**注意**: 
-- 本项目需要ROS环境支持，请确保已正确安装和配置ROS系统
-- 默认后端端口已从 8000 改为 8001
-- 首次部署建议使用 `./deploy.sh` 自动化脚本
+1. Fork 项目
+2. 创建分支 (`git checkout -b feature/xxx`)
+3. 提交更改（遵循 Conventional Commits）
+4. 创建 Pull Request
+
+## 📄 许可证
+
+MIT License — 详见 [LICENSE](LICENSE)

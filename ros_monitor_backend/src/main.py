@@ -19,22 +19,30 @@ logger = logging.getLogger(__name__)
 ros_manager = None
 connection_manager = ConnectionManager()
 
+# 机器人连接追踪
+robot_connections: dict = {}       # robot_id -> websocket
+_robot_data_active = False         # 是否有机器人数据接入
+ROBOT_HEARTBEAT_TIMEOUT = 30       # 机器人断连判定（秒）
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
     global ros_manager
     
-    # 启动时初始化ROS
     logger.info("Starting ROS Monitor Backend...")
+    
+    # 尝试 rosbridge 连接（可能失败，不影响启动）
     try:
         ros_manager = ROSNodeManager()
         await ros_manager.initialize()
-        logger.info("ROS Node Manager initialized successfully")
+        logger.info("ROS Node Manager initialized via rosbridge")
     except Exception as e:
-        logger.error(f"Failed to initialize ROS Node Manager: {e}")
-        ros_manager = None
+        logger.warning(f"rosbridge 连接未就绪 ({e})，等待机器人主动上报数据")
+        ros_manager = ROSNodeManager()
+        ros_manager._running = True
+        ros_manager._initialized = True
     
-    # 启动后台任务
+    # 启动后台广播任务（无论 rosbridge 是否就绪）
     asyncio.create_task(background_broadcast())
     
     yield
@@ -65,13 +73,15 @@ app.add_middleware(
 @app.get("/api/v1/health")
 async def health_check():
     """健康检查接口"""
-    ros_ready = ros_manager is not None and ros_manager.is_connected()
+    ros_ready = (ros_manager is not None and ros_manager.is_connected()) or _robot_data_active
+    robot_count = len(robot_connections)
     return {
         "success": True,
         "message": "ok",
         "ros_ready": ros_ready,
         "timestamp": time.time(),
-        "websocket_clients": connection_manager.get_client_count()
+        "websocket_clients": connection_manager.get_client_count(),
+        "robot_connections": robot_count,
     }
 
 # 系统状态API
@@ -107,7 +117,74 @@ async def system_status():
             "data": None
         }
 
-# WebSocket端点
+# ---- 机器人数据上报端点 ----
+
+@app.websocket("/ws/robot/{robot_id}")
+async def robot_websocket_endpoint(websocket: WebSocket, robot_id: str):
+    """机器人端 WebSocket 端点 —— 接收机器人推送的传感器数据。"""
+    global _robot_data_active
+    
+    await websocket.accept()
+    robot_connections[robot_id] = {'ws': websocket, 'last_seen': time.time()}
+    logger.info(f"机器人 [{robot_id}] 已连接 (当前在线: {len(robot_connections)}台)")
+    
+    try:
+        while True:
+            message = await websocket.receive_json()
+            await _handle_robot_message(robot_id, message)
+    except WebSocketDisconnect:
+        logger.info(f"机器人 [{robot_id}] 断开连接")
+    except Exception as e:
+        logger.error(f"机器人 [{robot_id}] 连接异常: {e}")
+    finally:
+        robot_connections.pop(robot_id, None)
+        if not robot_connections:
+            _robot_data_active = False
+            logger.info("所有机器人已断线")
+
+async def _handle_robot_message(robot_id: str, message: dict):
+    """处理机器人上报的消息，存入 ros_manager.latest_data。"""
+    global _robot_data_active
+    
+    msg_type = message.get('type', '')
+    
+    if msg_type == 'robot_register':
+        hostname = message.get('hostname', robot_id)
+        ip = message.get('ip', '')
+        logger.info(f"机器人 [{robot_id}] 注册: {hostname} @ {ip}")
+        if robot_id in robot_connections:
+            robot_connections[robot_id]['hostname'] = hostname
+            robot_connections[robot_id]['ip'] = ip
+            robot_connections[robot_id]['last_seen'] = time.time()
+            # 确认注册
+            try:
+                await robot_connections[robot_id]['ws'].send_json({
+                    'type': 'robot_registered',
+                    'message': f'欢迎 {hostname}，服务器已就绪',
+                    'timestamp': time.time(),
+                })
+            except Exception:
+                pass
+        return
+    
+    elif msg_type == 'sensor_data':
+        topic_name = message.get('topic_name', '')
+        data = message.get('data', {})
+        
+        if ros_manager and topic_name:
+            ros_manager._update_data(topic_name, data)
+            _robot_data_active = True
+            
+        if robot_id in robot_connections:
+            robot_connections[robot_id]['last_seen'] = time.time()
+        return
+    
+    elif msg_type == 'pong':
+        if robot_id in robot_connections:
+            robot_connections[robot_id]['last_seen'] = time.time()
+        return
+
+# ---- 浏览器客户端端点 ----
 @app.websocket("/ws/{client_id}")
 async def websocket_endpoint(websocket: WebSocket, client_id: str):
     await connection_manager.connect(websocket, client_id)
@@ -222,10 +299,10 @@ async def handle_websocket_message(client_id: str, message: dict):
         }, client_id)
 
 async def background_broadcast():
-    """后台数据广播任务"""
+    """后台数据广播任务 —— 从 ros_manager.latest_data 读取并推送给浏览器客户端。"""
     while True:
         try:
-            if ros_manager and ros_manager.is_connected():
+            if ros_manager and (ros_manager.is_connected() or _robot_data_active):
                 # 获取最新的传感器数据
                 camera_data = await ros_manager.get_latest_camera_data()
                 lidar_data = await ros_manager.get_latest_lidar_data()

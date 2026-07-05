@@ -1,562 +1,730 @@
+"""
+ROS 节点管理器（rosbridge 版）
+通过 rosbridge WebSocket 远程订阅 ROS topic，替代本地 rospy 直连。
+"""
+
 import asyncio
-import rospy
-from threading import Thread
-from typing import Dict, Any, Optional, List
-import json
 import logging
 import time
+import os
+import threading
+from typing import Dict, Any, Optional
 
-from src.ros_bridge.subscribers.compressed_camera_subscriber import CompressedCameraSubscriber
-from src.ros_bridge.subscribers.lidar_subscriber import LidarSubscriber
-from src.ros_bridge.subscribers.imu_subscriber import ImuSubscriber
-from src.ros_bridge.subscribers.gnss_subscriber import GNSSSubscriber
-from src.ros_bridge.subscribers.navsatfix_subscriber import NavSatFixSubscriber
-from src.ros_bridge.subscribers.path_subscriber import PathSubscriber
-from src.ros_bridge.subscribers.odometry_subscriber import OdometrySubscriber
-from src.ros_bridge.subscribers.registered_cloud_subscriber import RegisteredCloudSubscriber
+from src.ros_bridge.rosbridge_client import RosbridgeClient
+from src.ros_bridge.pointcloud_parser import parse_pointcloud2
 from src.utils.camera_config_loader import camera_config
 
 logger = logging.getLogger(__name__)
 
+
+# ---------------------------------------------------------------------------
+# Topic 消息处理器 —— 将 rosbridge JSON 解析为前端需要的 dict 格式
+# ---------------------------------------------------------------------------
+
+def _handle_lidar(callback, topic: str, msg: dict) -> None:
+    """处理 /livox/lidar PointCloud2 消息。"""
+    points, colors, total_points = parse_pointcloud2(msg, max_points=5000)
+    payload = {
+        'timestamp': msg.get('header', {}).get('stamp', {}).get('secs', time.time()),
+        'frame_id': msg.get('header', {}).get('frame_id', ''),
+        'point_count': len(points),
+        'fields': [
+            {'name': 'x', 'offset': 0, 'datatype': 7, 'count': 1},
+            {'name': 'y', 'offset': 4, 'datatype': 7, 'count': 1},
+            {'name': 'z', 'offset': 8, 'datatype': 7, 'count': 1},
+        ],
+        'data': points,
+        'compression': 'none',
+    }
+    callback(payload)
+
+
+def _handle_imu(callback, topic: str, msg: dict) -> None:
+    """处理 /livox/imu sensor_msgs/Imu 消息。"""
+    payload = {
+        'timestamp': msg.get('header', {}).get('stamp', {}).get('secs', time.time()),
+        'orientation': {
+            'x': msg.get('orientation', {}).get('x', 0.0),
+            'y': msg.get('orientation', {}).get('y', 0.0),
+            'z': msg.get('orientation', {}).get('z', 0.0),
+            'w': msg.get('orientation', {}).get('w', 1.0),
+        },
+        'angular_velocity': {
+            'x': msg.get('angular_velocity', {}).get('x', 0.0),
+            'y': msg.get('angular_velocity', {}).get('y', 0.0),
+            'z': msg.get('angular_velocity', {}).get('z', 0.0),
+        },
+        'linear_acceleration': {
+            'x': msg.get('linear_acceleration', {}).get('x', 0.0),
+            'y': msg.get('linear_acceleration', {}).get('y', 0.0),
+            'z': msg.get('linear_acceleration', {}).get('z', 0.0),
+        },
+    }
+    callback(payload)
+
+
+def _handle_gnss_pvt(callback, topic: str, msg: dict) -> None:
+    """处理 gnss_comm/GnssPVTSolnMsg 消息。"""
+    rtk_status = _resolve_gnss_status(msg)
+    payload = {
+        'rtk_status': rtk_status,
+        'quality': {
+            'fix_type': msg.get('fix_type', 0),
+            'valid_fix': msg.get('valid_fix', False),
+            'diff_soln': msg.get('diff_soln', False),
+            'carr_soln': msg.get('carr_soln', 0),
+            'num_sv': msg.get('num_sv', 0),
+        },
+        'position': {
+            'latitude': round(msg.get('latitude', 0.0), 8),
+            'longitude': round(msg.get('longitude', 0.0), 8),
+            'altitude': round(msg.get('altitude', 0.0), 3),
+            'height_msl': round(msg.get('height_msl', 0.0), 3),
+        },
+        'accuracy': {
+            'h_acc': round(msg.get('h_acc', 0.0), 4),
+            'v_acc': round(msg.get('v_acc', 0.0), 4),
+            'p_dop': round(msg.get('p_dop', 0.0), 2),
+        },
+        'velocity': {
+            'vel_n': round(msg.get('vel_n', 0.0), 3),
+            'vel_e': round(msg.get('vel_e', 0.0), 3),
+            'vel_d': round(msg.get('vel_d', 0.0), 3),
+            'vel_acc': round(msg.get('vel_acc', 0.0), 3),
+        },
+        'time': {
+            'week': msg.get('time', {}).get('week', 0),
+            'tow': round(msg.get('time', {}).get('tow', 0.0), 1),
+        },
+        'timestamp': msg.get('header', {}).get('stamp', {}).get('secs', time.time()),
+        'sequence': getattr(_handle_gnss_pvt, '_seq', 0),
+    }
+    _handle_gnss_pvt._seq = getattr(_handle_gnss_pvt, '_seq', 0) + 1
+    callback(payload)
+
+
+def _handle_navsatfix(callback, topic: str, msg: dict) -> None:
+    """处理 sensor_msgs/NavSatFix 消息。"""
+    status = msg.get('status', {}).get('status', -1)
+    if status == 2:
+        rtk_status = 'RTK_FIXED'
+    elif status >= 0:
+        rtk_status = 'GPS_3D'
+    else:
+        rtk_status = 'NO_FIX'
+
+    cov = msg.get('position_covariance', [0] * 9)
+    import math
+    e_var = cov[0] if len(cov) > 0 else 0
+    n_var = cov[4] if len(cov) > 4 else 0
+    u_var = cov[8] if len(cov) > 8 else 0
+    h_acc = math.sqrt(max(0, e_var + n_var)) if (e_var > 0 or n_var > 0) else 0.0
+    v_acc = math.sqrt(max(0, u_var)) if u_var > 0 else 0.0
+
+    payload = {
+        'rtk_status': rtk_status,
+        'quality': {
+            'fix_type': 3 if status >= 0 else 0,
+            'valid_fix': status >= 0,
+            'diff_soln': status >= 1,
+            'carr_soln': 2 if status == 2 else 0,
+            'num_sv': 0,
+        },
+        'position': {
+            'latitude': round(msg.get('latitude', 0.0), 8),
+            'longitude': round(msg.get('longitude', 0.0), 8),
+            'altitude': round(msg.get('altitude', 0.0), 3),
+            'height_msl': round(msg.get('altitude', 0.0), 3),
+        },
+        'accuracy': {
+            'h_acc': round(h_acc, 4),
+            'v_acc': round(v_acc, 4),
+            'p_dop': round(math.sqrt(h_acc ** 2 + v_acc ** 2) if (h_acc > 0 or v_acc > 0) else 0.0, 2),
+        },
+        'velocity': {'vel_n': 0.0, 'vel_e': 0.0, 'vel_d': 0.0, 'vel_acc': 0.0},
+        'time': {'week': 0, 'tow': msg.get('header', {}).get('stamp', {}).get('secs', time.time())},
+        'timestamp': msg.get('header', {}).get('stamp', {}).get('secs', time.time()),
+        'sequence': getattr(_handle_navsatfix, '_seq', 0),
+    }
+    _handle_navsatfix._seq = getattr(_handle_navsatfix, '_seq', 0) + 1
+    callback(payload)
+
+
+def _handle_path(callback, topic: str, msg: dict) -> None:
+    """处理 nav_msgs/Path 消息。"""
+    poses_raw = msg.get('poses', [])
+    total_poses = len(poses_raw)
+    max_points = 1000
+    step = max(1, total_poses // max_points) if total_poses > max_points else 1
+
+    poses = []
+    for i in range(0, total_poses, step):
+        p = poses_raw[i]
+        pose = p.get('pose', {})
+        poses.append({
+            'position': {
+                'x': float(pose.get('position', {}).get('x', 0)),
+                'y': float(pose.get('position', {}).get('y', 0)),
+                'z': float(pose.get('position', {}).get('z', 0)),
+            },
+            'orientation': {
+                'x': float(pose.get('orientation', {}).get('x', 0)),
+                'y': float(pose.get('orientation', {}).get('y', 0)),
+                'z': float(pose.get('orientation', {}).get('z', 0)),
+                'w': float(pose.get('orientation', {}).get('w', 1)),
+            },
+        })
+
+    payload = {
+        'topic': topic,
+        'timestamp': msg.get('header', {}).get('stamp', {}).get('secs', time.time()),
+        'frame_id': msg.get('header', {}).get('frame_id', ''),
+        'sequence': msg.get('header', {}).get('seq', 0),
+        'total_poses': total_poses,
+        'sampled_poses': len(poses),
+        'poses': poses,
+    }
+    callback(payload)
+
+
+def _handle_odometry(callback, topic: str, msg: dict) -> None:
+    """处理 nav_msgs/Odometry 消息。"""
+    pose = msg.get('pose', {}).get('pose', {})
+    twist = msg.get('twist', {}).get('twist', {})
+    payload = {
+        'topic': topic,
+        'timestamp': msg.get('header', {}).get('stamp', {}).get('secs', time.time()),
+        'frame_id': msg.get('header', {}).get('frame_id', ''),
+        'child_frame_id': msg.get('child_frame_id', ''),
+        'sequence': msg.get('header', {}).get('seq', 0),
+        'pose': {
+            'position': {
+                'x': float(pose.get('position', {}).get('x', 0)),
+                'y': float(pose.get('position', {}).get('y', 0)),
+                'z': float(pose.get('position', {}).get('z', 0)),
+            },
+            'orientation': {
+                'x': float(pose.get('orientation', {}).get('x', 0)),
+                'y': float(pose.get('orientation', {}).get('y', 0)),
+                'z': float(pose.get('orientation', {}).get('z', 0)),
+                'w': float(pose.get('orientation', {}).get('w', 1)),
+            },
+        },
+        'twist': {
+            'linear': {
+                'x': float(twist.get('linear', {}).get('x', 0)),
+                'y': float(twist.get('linear', {}).get('y', 0)),
+                'z': float(twist.get('linear', {}).get('z', 0)),
+            },
+            'angular': {
+                'x': float(twist.get('angular', {}).get('x', 0)),
+                'y': float(twist.get('angular', {}).get('y', 0)),
+                'z': float(twist.get('angular', {}).get('z', 0)),
+            },
+        },
+    }
+    callback(payload)
+
+
+def _handle_registered_cloud(callback, topic: str, msg: dict) -> None:
+    """处理 /cloud_registered PointCloud2 消息。"""
+    points, colors, total_points = parse_pointcloud2(msg, max_points=5000)
+    field_names = [f.get('name', '') for f in msg.get('fields', [])]
+    has_rgb = 'rgb' in field_names
+
+    payload = {
+        'topic': topic,
+        'timestamp': msg.get('header', {}).get('stamp', {}).get('secs', time.time()),
+        'frame_id': msg.get('header', {}).get('frame_id', ''),
+        'sequence': msg.get('header', {}).get('seq', 0),
+        'total_points': total_points,
+        'sampled_points': len(points),
+        'points': points,
+        'colors': colors or [[255, 255, 255]] * len(points),
+        'has_rgb': has_rgb,
+        'fields': ['x', 'y', 'z', 'rgb'] if has_rgb else ['x', 'y', 'z'],
+    }
+    callback(payload)
+
+
+def _resolve_gnss_status(msg: dict) -> str:
+    """根据 carr_soln / fix_type 解析 RTK 状态字符串。"""
+    carr = msg.get('carr_soln', 0)
+    fix = msg.get('fix_type', 0)
+    if carr == 2:
+        return 'RTK_FIXED'
+    if carr == 1:
+        return 'RTK_FLOAT'
+    if fix == 3:
+        return 'GPS_3D'
+    if fix == 2:
+        return 'GPS_2D'
+    if fix == 1:
+        return 'GPS_1D'
+    return 'NO_FIX'
+
+
+# ---------------------------------------------------------------------------
+# 相机消息处理器（有状态，需要独立类）
+# ---------------------------------------------------------------------------
+
+class _CameraHandler:
+    """压缩图像处理器，保持帧计数和图像参数。"""
+
+    def __init__(self, topic: str, camera_id: str = None,
+                 image_params: dict = None):
+        self.topic = topic
+        self.frame_count = 0
+        self.last_frame_time = 0.0
+        self.is_active = True
+
+        if camera_id:
+            self.camera_id = camera_id
+        elif 'left_camera' in topic:
+            self.camera_id = 'left_camera'
+        elif 'right_camera' in topic:
+            self.camera_id = 'right_camera'
+        else:
+            parts = topic.split('/')
+            self.camera_id = parts[-3] if 'compressed' in parts[-1] and len(parts) >= 3 else 'unknown'
+
+        if image_params:
+            self.jpeg_quality = image_params.get('jpeg_quality', 70)
+            self.max_width = image_params.get('max_width', 640)
+            self.enable_resize = image_params.get('enable_resize', True)
+        else:
+            self.jpeg_quality = 70
+            self.max_width = 640
+            self.enable_resize = True
+
+        logger.info(f"相机处理器创建: topic={topic}, camera_id={self.camera_id}")
+
+    def __call__(self, callback, topic: str, msg: dict) -> None:
+        """rosbridge 回调入口。"""
+        try:
+            import base64
+            import numpy as np
+            import cv2
+
+            now = time.time()
+            fmt = msg.get('format', 'jpeg')
+            data_b64 = msg.get('data', '')
+
+            if not data_b64:
+                return
+
+            jpeg_bytes = base64.b64decode(data_b64)
+            np_arr = np.frombuffer(jpeg_bytes, np.uint8)
+            cv_image = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+
+            if cv_image is None:
+                return
+
+            # 缩放
+            if self.enable_resize and cv_image.shape[1] > self.max_width:
+                scale = self.max_width / cv_image.shape[1]
+                new_h = int(cv_image.shape[0] * scale)
+                cv_image = cv2.resize(cv_image, (self.max_width, new_h))
+
+            # 重新编码为 JPEG
+            _, jpeg_buf = cv2.imencode('.jpg', cv_image,
+                                       [cv2.IMWRITE_JPEG_QUALITY, self.jpeg_quality])
+            jpeg_b64 = base64.b64encode(jpeg_buf).decode('utf-8')
+
+            camera_data = {
+                'camera_id': self.camera_id,
+                'topic': self.topic,
+                'timestamp': msg.get('header', {}).get('stamp', {}).get('secs', now),
+                'sequence': self.frame_count,
+                'encoding': 'jpeg',
+                'width': cv_image.shape[1],
+                'height': cv_image.shape[0],
+                'data': jpeg_b64,
+                'compressed': True,
+                'compressed_size': len(jpeg_b64),
+                'compression_ratio': len(jpeg_b64) / (cv_image.shape[0] * cv_image.shape[1] * 3) * 100,
+                'frame_rate': 1.0 / (now - self.last_frame_time) if self.last_frame_time > 0 else 0.0,
+            }
+
+            callback(camera_data)
+            self.frame_count += 1
+            self.last_frame_time = now
+
+        except Exception as e:
+            logger.error(f"[{self.topic}] 相机处理错误: {e}")
+
+    def update_settings(self, preview_height=None, jpeg_quality=None):
+        if preview_height is not None:
+            self.max_width = int(preview_height * 4 / 3)
+        if jpeg_quality is not None:
+            self.jpeg_quality = max(1, min(100, jpeg_quality))
+
+    def get_status(self) -> dict:
+        return {
+            'topic': self.topic,
+            'camera_id': self.camera_id,
+            'is_active': self.is_active,
+            'frame_count': self.frame_count,
+            'last_frame_time': self.last_frame_time,
+        }
+
+
+# ---------------------------------------------------------------------------
+# ROSNodeManager（rosbridge 重构版）
+# ---------------------------------------------------------------------------
+
 class ROSNodeManager:
-    """ROS节点管理器，负责管理所有ROS相关的订阅和发布"""
-    
+    """ROS 节点管理器 —— 通过 rosbridge 远程订阅 topic。
+
+    环境变量:
+        ROSBRIDGE_HOST: rosbridge 服务器 IP（默认 localhost）
+        ROSBRIDGE_PORT: rosbridge 端口（默认 9090）
+    """
+
     def __init__(self):
-        self.ros_thread: Optional[Thread] = None
         self.subscribers: Dict[str, Any] = {}
         self.latest_data: Dict[str, Any] = {}
+        self._lock = threading.Lock()
         self._running = False
         self._initialized = False
-        
-        # 从配置文件加载相机话题
+
+        rosbridge_host = os.getenv('ROSBRIDGE_HOST', 'localhost')
+        rosbridge_port = int(os.getenv('ROSBRIDGE_PORT', '9090'))
+        self.rosbridge = RosbridgeClient(host=rosbridge_host, port=rosbridge_port)
+
+        # 话题配置
         self.camera_topics = camera_config.get_topic_list()
-        logger.info(f"从配置文件加载相机话题: {self.camera_topics}")
-        
-        # 加载图像处理参数
         self.image_params = camera_config.get_image_processing_params()
-        logger.info(f"图像处理参数: {self.image_params}")
-        
-        self.lidar_topics = [
-            '/livox/lidar'
-        ]
-        self.imu_topics = [
-            '/livox/imu'
-        ]
+        self.lidar_topics = ['/livox/lidar']
+        self.imu_topics = ['/livox/imu']
         self.gnss_topics = [
-            # 优先使用GnssPVTSolnMsg话题(信息全面,包含RTK状态、卫星数、速度等)
             {'topic': '/ublox_driver/receiver_pvt', 'type': 'GnssPVTSolnMsg'},
-            # 备用NavSatFix话题(标准ROS消息,但信息缺失严重)
-            {'topic': '/ublox_driver/receiver_lla', 'type': 'NavSatFix'}
+            {'topic': '/ublox_driver/receiver_lla', 'type': 'NavSatFix'},
         ]
-
-        # SLAM相关话题
         self.slam_topics = {
-            'path': '/path',  # 运动轨迹
-            'odometry': '/aft_mapped_to_init',  # 当前位姿里程计
-            'registered_cloud': '/cloud_registered'  # 配准后的点云
+            'path': '/path',
+            'odometry': '/aft_mapped_to_init',
+            'registered_cloud': '/cloud_registered',
         }
-        
+
+        logger.info(f"ROSNodeManager 初始化: rosbridge -> ws://{rosbridge_host}:{rosbridge_port}")
+
     async def initialize(self):
-        """初始化ROS节点"""
+        """连接到 rosbridge 并订阅所有话题。"""
         try:
-            logger.info("开始初始化ROS节点管理器...")
-            
-            # 在单独线程中初始化ROS
-            self.ros_thread = Thread(target=self._init_ros_node, daemon=True)
-            self.ros_thread.start()
-            logger.info("ROS初始化线程已启动")
-            
-            # 等待ROS初始化完成
-            logger.info("等待ROS初始化完成...")
-            await asyncio.sleep(2.0)
-            
-            # 检查ROS节点状态
-            logger.info(f"检查ROS节点状态: rospy.is_shutdown() = {rospy.is_shutdown()}")
-            
-            if not rospy.is_shutdown():
-                logger.info("ROS节点初始化成功，开始设置订阅器...")
-                self._setup_subscribers()
-                self._running = True
-                self._initialized = True
-                logger.info("ROS节点管理器初始化成功")
-            else:
-                logger.error("ROS节点初始化失败: rospy.is_shutdown() 返回 True")
-                raise Exception("Failed to initialize ROS node")
-                
+            logger.info("正在连接到 rosbridge...")
+            await self.rosbridge.connect()
+            logger.info("rosbridge 连接成功，开始设置订阅...")
+            self._setup_subscribers()
+            self._running = True
+            self._initialized = True
+            logger.info(f"ROSNodeManager 初始化完成，已订阅 {len(self.subscribers)} 个话题")
         except Exception as e:
-            logger.error(f"ROS初始化失败: {e}")
-            import traceback
-            logger.error(f"错误详情: {traceback.format_exc()}")
+            logger.error(f"ROS 初始化失败: {e}")
             raise
-            
-    def _init_ros_node(self):
-        """在单独线程中初始化ROS节点"""
-        try:
-            logger.info("开始初始化ROS节点...")
-            rospy.init_node('ros_monitor_bridge', anonymous=True, disable_signals=True)
-            logger.info("ROS节点 'ros_monitor_bridge' 初始化成功")
-            logger.info(f"节点名称: {rospy.get_name()}")
-            logger.info(f"是否关闭: {rospy.is_shutdown()}")
-        except Exception as e:
-            logger.error(f"ROS节点初始化失败: {e}")
-            import traceback
-            logger.error(f"错误详情: {traceback.format_exc()}")
-            
+
     def _setup_subscribers(self):
-        """设置ROS话题订阅器"""
+        """通过 rosbridge 订阅所有话题。"""
+        subscribed = 0
+
+        # --- 相机 ---
+        for topic in self.camera_topics:
+            camera_id = camera_config.get_camera_id_by_topic(topic)
+            handler = _CameraHandler(topic, camera_id, self.image_params)
+            def _cam_cb(data, t=topic):
+                handler(self._update_data, t, data)
+            try:
+                self.rosbridge.subscribe(topic, 'sensor_msgs/CompressedImage', _cam_cb)
+                self.subscribers[topic] = handler
+                subscribed += 1
+                logger.info(f"  相机订阅成功: {topic} (camera_id={camera_id})")
+            except Exception as e:
+                logger.warning(f"  相机订阅失败 {topic}: {e}")
+
+        # --- 激光雷达 ---
+        for topic in self.lidar_topics:
+            def _lidar_cb(data, t=topic):
+                _handle_lidar(self._update_data, t, data)
+            try:
+                self.rosbridge.subscribe(topic, 'sensor_msgs/PointCloud2', _lidar_cb)
+                self.subscribers[topic] = {'topic': topic, 'type': 'lidar', 'active': True}
+                subscribed += 1
+                logger.info(f"  激光雷达订阅成功: {topic}")
+            except Exception as e:
+                logger.warning(f"  激光雷达订阅失败 {topic}: {e}")
+
+        # --- IMU ---
+        for topic in self.imu_topics:
+            def _imu_cb(data, t=topic):
+                _handle_imu(self._update_data, t, data)
+            try:
+                self.rosbridge.subscribe(topic, 'sensor_msgs/Imu', _imu_cb)
+                self.subscribers[topic] = {'topic': topic, 'type': 'imu', 'active': True}
+                subscribed += 1
+                logger.info(f"  IMU 订阅成功: {topic}")
+            except Exception as e:
+                logger.warning(f"  IMU 订阅失败 {topic}: {e}")
+
+        # --- GNSS（优先 GnssPVTSolnMsg，其次 NavSatFix）---
+        gnss_ok = False
+        for cfg in self.gnss_topics:
+            topic = cfg['topic']
+            msg_type = cfg['type']
+            try:
+                if msg_type == 'GnssPVTSolnMsg':
+                    def _gnss_cb(data, t=topic):
+                        _handle_gnss_pvt(self._update_data, t, data)
+                    self.rosbridge.subscribe(topic, 'gnss_comm/GnssPVTSolnMsg', _gnss_cb)
+                else:
+                    def _navsat_cb(data, t=topic):
+                        _handle_navsatfix(self._update_data, t, data)
+                    self.rosbridge.subscribe(topic, 'sensor_msgs/NavSatFix', _navsat_cb)
+                self.subscribers[topic] = {'topic': topic, 'type': 'gnss', 'active': True}
+                subscribed += 1
+                gnss_ok = True
+                logger.info(f"  GNSS 订阅成功: {topic} ({msg_type})")
+                break
+            except Exception as e:
+                logger.warning(f"  GNSS 订阅失败 {topic}: {e}")
+                continue
+
+        if not gnss_ok:
+            logger.warning("  所有 GNSS 话题订阅失败，将使用虚拟数据")
+
+        # --- SLAM ---
+        # Path
+        path_topic = self.slam_topics['path']
+        def _path_cb(data, t=path_topic):
+            _handle_path(self._update_data, t, data)
         try:
-            # 设置相机订阅器 - 使用配置文件中的话题
-            for topic in self.camera_topics:
-                try:
-                    # 从配置获取相机ID
-                    camera_id = camera_config.get_camera_id_by_topic(topic)
-                    
-                    subscriber = CompressedCameraSubscriber(
-                        topic=topic,
-                        camera_id=camera_id,  # 传递配置的camera_id
-                        callback=lambda data, t=topic: self._update_data(t, data),
-                        image_params=self.image_params  # 传递图像处理参数
-                    )
-                    self.subscribers[topic] = subscriber
-                    logger.info(f"Compressed camera subscriber created for {topic} (camera_id: {camera_id})")
-                except Exception as e:
-                    logger.warning(f"Failed to create compressed camera subscriber for {topic}: {e}")
-            
-            # 设置激光雷达订阅器
-            for topic in self.lidar_topics:
-                try:
-                    subscriber = LidarSubscriber(
-                        topic=topic,
-                        callback=lambda data, t=topic: self._update_data(t, data)
-                    )
-                    self.subscribers[topic] = subscriber
-                    logger.info(f"Lidar subscriber created for {topic}")
-                    break
-                except Exception as e:
-                    logger.warning(f"Failed to create lidar subscriber for {topic}: {e}")
-            
-            # 设置IMU订阅器
-            for topic in self.imu_topics:
-                try:
-                    subscriber = ImuSubscriber(
-                        topic=topic,
-                        callback=lambda data, t=topic: self._update_data(t, data)
-                    )
-                    self.subscribers[topic] = subscriber
-                    logger.info(f"IMU subscriber created for {topic}")
-                    break
-                except Exception as e:
-                    logger.warning(f"Failed to create IMU subscriber for {topic}: {e}")
-            
-            # 设置GNSS订阅器 - 自动选择NavSatFix或GnssPVTSolnMsg
-            gnss_created = False
-            for gnss_config in self.gnss_topics:
-                topic = gnss_config['topic']
-                msg_type = gnss_config['type']
-                logger.info(f"🔍 尝试创建GNSS订阅器: {topic} ({msg_type})")
-                try:
-                    if msg_type == 'NavSatFix':
-                        # 使用NavSatFix订阅器(推荐)
-                        subscriber = NavSatFixSubscriber(
-                            topic=topic,
-                            callback=lambda data, t=topic: self._update_data(t, data)
-                        )
-                        self.subscribers[topic] = subscriber
-                        logger.info(f"✅ NavSatFix GNSS订阅器创建成功: {topic}")
-                        gnss_created = True
-                        break  # 成功后停止尝试
-                    else:
-                        # 备用: 使用GnssPVTSolnMsg订阅器
-                        subscriber = GNSSSubscriber(
-                            topic=topic,
-                            callback=lambda data, t=topic: self._update_data(t, data)
-                        )
-                        self.subscribers[topic] = subscriber
-                        logger.info(f"✅ GnssPVTSolnMsg GNSS订阅器创建成功: {topic}")
-                        gnss_created = True
-                        break
-                except Exception as e:
-                    logger.warning(f"❌ 创建GNSS订阅器失败 {topic} ({msg_type}): {e}")
-                    import traceback
-                    logger.debug(f"错误堆栈: {traceback.format_exc()}")
-                    continue  # 尝试下一个
-            
-            if not gnss_created:
-                logger.error("⚠️ 所有GNSS订阅器创建失败，将使用虚拟数据")
-
-            # 设置SLAM相关订阅器
-            self._setup_slam_subscribers()
-
-            logger.info(f"ROS subscribers setup completed. Total: {len(self.subscribers)}")
-
+            self.rosbridge.subscribe(path_topic, 'nav_msgs/Path', _path_cb)
+            self.subscribers[path_topic] = {'topic': path_topic, 'type': 'path', 'active': True}
+            subscribed += 1
+            logger.info(f"  Path 订阅成功: {path_topic}")
         except Exception as e:
-            logger.error(f"Failed to setup ROS subscribers: {e}")
+            logger.warning(f"  Path 订阅失败 {path_topic}: {e}")
 
-    def _setup_slam_subscribers(self):
-        """设置SLAM相关订阅器"""
+        # Odometry
+        odom_topic = self.slam_topics['odometry']
+        def _odom_cb(data, t=odom_topic):
+            _handle_odometry(self._update_data, t, data)
         try:
-            # Path订阅器 - 运动轨迹
-            path_topic = self.slam_topics.get('path', '/path')
-            try:
-                subscriber = PathSubscriber(
-                    topic=path_topic,
-                    callback=lambda data, t=path_topic: self._update_data(t, data)
-                )
-                self.subscribers[path_topic] = subscriber
-                logger.info(f"✅ Path订阅器创建成功: {path_topic}")
-            except Exception as e:
-                logger.warning(f"❌ Path订阅器创建失败: {e}")
-
-            # Odometry订阅器 - 当前位姿
-            odom_topic = self.slam_topics.get('odometry', '/aft_mapped_to_init')
-            try:
-                subscriber = OdometrySubscriber(
-                    topic=odom_topic,
-                    callback=lambda data, t=odom_topic: self._update_data(t, data)
-                )
-                self.subscribers[odom_topic] = subscriber
-                logger.info(f"✅ Odometry订阅器创建成功: {odom_topic}")
-            except Exception as e:
-                logger.warning(f"❌ Odometry订阅器创建失败: {e}")
-
-            # RegisteredCloud订阅器 - 配准点云
-            cloud_topic = self.slam_topics.get('registered_cloud', '/cloud_registered')
-            try:
-                subscriber = RegisteredCloudSubscriber(
-                    topic=cloud_topic,
-                    callback=lambda data, t=cloud_topic: self._update_data(t, data),
-                    max_points=5000  # 限制点数
-                )
-                self.subscribers[cloud_topic] = subscriber
-                logger.info(f"✅ RegisteredCloud订阅器创建成功: {cloud_topic}")
-            except Exception as e:
-                logger.warning(f"❌ RegisteredCloud订阅器创建失败: {e}")
-
+            self.rosbridge.subscribe(odom_topic, 'nav_msgs/Odometry', _odom_cb)
+            self.subscribers[odom_topic] = {'topic': odom_topic, 'type': 'odometry', 'active': True}
+            subscribed += 1
+            logger.info(f"  Odometry 订阅成功: {odom_topic}")
         except Exception as e:
-            logger.error(f"Failed to setup SLAM subscribers: {e}")
+            logger.warning(f"  Odometry 订阅失败 {odom_topic}: {e}")
+
+        # Registered Cloud
+        cloud_topic = self.slam_topics['registered_cloud']
+        def _cloud_cb(data, t=cloud_topic):
+            _handle_registered_cloud(self._update_data, t, data)
+        try:
+            self.rosbridge.subscribe(cloud_topic, 'sensor_msgs/PointCloud2', _cloud_cb)
+            self.subscribers[cloud_topic] = {'topic': cloud_topic, 'type': 'cloud', 'active': True}
+            subscribed += 1
+            logger.info(f"  RegisteredCloud 订阅成功: {cloud_topic}")
+        except Exception as e:
+            logger.warning(f"  RegisteredCloud 订阅失败 {cloud_topic}: {e}")
+
+        logger.info(f"订阅器设置完毕: {subscribed}/{len(self.subscribers)} 个活跃")
 
     def _update_data(self, topic: str, data: Dict[str, Any]):
-        """更新最新数据"""
-        try:
+        """线程安全地更新最新数据。"""
+        with self._lock:
             self.latest_data[topic] = {
-                'timestamp': rospy.get_time() if not rospy.is_shutdown() else time.time(),
+                'timestamp': time.time(),
                 'data': data,
-                'updated_at': time.time()
+                'updated_at': time.time(),
             }
-            # 对GNSS数据进行特别日志
-            if 'gnss' in topic.lower() or 'receiver' in topic.lower():
-                rtk_status = data.get('rtk_status', 'UNKNOWN')
-                logger.info(f"📡 GNSS数据更新成功: {topic}, RTK={rtk_status}, 帧数={data.get('sequence', 0)}")
-            else:
-                logger.debug(f"数据更新成功: {topic}, 帧数: {data.get('sequence', 0)}")
-        except Exception as e:
-            logger.error(f"Error updating data for topic {topic}: {e}")
-        
+        logger.debug(f"数据更新: {topic}")
+
+    # ------------------------------------------------------------------
+    # 数据获取方法（供 background_broadcast 调用）
+    # ------------------------------------------------------------------
+
     async def get_latest_camera_data(self) -> Optional[Dict[str, Any]]:
-        """获取最新相机数据"""
         camera_data = {}
         
+        # 方式1: 按配置的话题查找
         for topic in self.camera_topics:
-            if topic in self.latest_data:
-                data = self.latest_data[topic]
-                if data and 'data' in data:
-                    camera_id = data['data'].get('camera_id', topic.split('/')[-2])
-                    camera_data[camera_id] = data['data']
-                    logger.info(f"获取相机数据: {camera_id}, 帧数: {data['data'].get('sequence', 0)}")
-        
-        # 如果没有真实数据，返回测试数据
+            with self._lock:
+                entry = self.latest_data.get(topic)
+            if entry and 'data' in entry:
+                d = entry['data']
+                camera_id = d.get('camera_id', topic.split('/')[-2])
+                camera_data[camera_id] = d
+
+        # 方式2: 扫描所有 latest_data 中的相机数据（机器人推送模式）
         if not camera_data:
-            logger.warning("没有真实相机数据，返回测试数据")
+            with self._lock:
+                for topic, entry in list(self.latest_data.items()):
+                    if 'data' in entry and isinstance(entry['data'], dict):
+                        d = entry['data']
+                        if 'camera_id' in d and 'data' in d:
+                            camera_data[d['camera_id']] = d
+
+        if not camera_data:
             camera_data = await self._get_test_camera_data()
-        
         return camera_data if camera_data else None
-    
+
+    async def get_latest_lidar_data(self) -> Optional[Dict[str, Any]]:
+        for topic in self.lidar_topics:
+            with self._lock:
+                entry = self.latest_data.get(topic)
+            if entry and 'data' in entry:
+                return entry['data']
+        # 后备：返回虚拟数据用于前端调试
+        return {
+            'timestamp': time.time(),
+            'point_count': 100,
+            'data': [[0.0, 0.0, 0.0]] * 100,
+            'fields': [{'name': 'x'}, {'name': 'y'}, {'name': 'z'}],
+            'compression': 'none',
+        }
+
+    async def get_latest_imu_data(self) -> Optional[Dict[str, Any]]:
+        for topic in self.imu_topics:
+            with self._lock:
+                entry = self.latest_data.get(topic)
+            if entry and 'data' in entry:
+                return entry['data']
+        return {
+            'timestamp': time.time(),
+            'orientation': {'x': 0.0, 'y': 0.0, 'z': 0.0, 'w': 1.0},
+            'angular_velocity': {'x': 0.0, 'y': 0.0, 'z': 0.0},
+            'linear_acceleration': {'x': 9.8, 'y': 0.0, 'z': 0.0},
+        }
+
+    async def get_latest_gnss_data(self) -> Optional[Dict[str, Any]]:
+        for cfg in self.gnss_topics:
+            topic = cfg['topic']
+            with self._lock:
+                entry = self.latest_data.get(topic)
+            if entry and 'data' in entry:
+                return entry['data']
+        return await self._get_test_gnss_data()
+
+    async def get_latest_slam_data(self) -> Optional[Dict[str, Any]]:
+        slam_data = {}
+        for key in ('path', 'odometry', 'registered_cloud'):
+            topic = self.slam_topics[key]
+            with self._lock:
+                entry = self.latest_data.get(topic)
+            if entry and 'data' in entry:
+                slam_data[key] = entry['data']
+        return slam_data if slam_data else None
+
+    # ------------------------------------------------------------------
+    # 连接状态
+    # ------------------------------------------------------------------
+
+    def is_connected(self) -> bool:
+        return self._running and self._initialized and self.rosbridge.is_connected
+
+    def get_connection_info(self) -> Dict[str, Any]:
+        return {
+            'running': self._running,
+            'initialized': self._initialized,
+            'rosbridge_connected': self.rosbridge.is_connected,
+            'subscriber_count': len(self.subscribers),
+            'data_topics': list(self.latest_data.keys()),
+            'subscribed_topics': self.rosbridge.get_subscribed_topics(),
+            'subscriber_status': self.get_subscriber_status(),
+        }
+
+    def get_subscriber_status(self) -> Dict[str, Any]:
+        status = {}
+        for topic, sub in self.subscribers.items():
+            status[topic] = sub if isinstance(sub, dict) else sub.get_status() if hasattr(sub, 'get_status') else {'topic': topic}
+        return status
+
+    def update_camera_settings(self, camera_id: str, preview_height=None, jpeg_quality=None):
+        for topic, handler in self.subscribers.items():
+            if hasattr(handler, 'camera_id') and handler.camera_id == camera_id:
+                if hasattr(handler, 'update_settings'):
+                    handler.update_settings(preview_height, jpeg_quality)
+                    return True
+        return False
+
+    async def shutdown(self):
+        self._running = False
+        self.rosbridge.close()
+        self.subscribers.clear()
+        with self._lock:
+            self.latest_data.clear()
+        logger.info("ROSNodeManager 已关闭")
+
+    # ------------------------------------------------------------------
+    # 虚拟测试数据
+    # ------------------------------------------------------------------
+
     async def _get_test_camera_data(self) -> Dict[str, Any]:
-        """生成测试相机数据"""
-        if not hasattr(self, '_test_camera_counter'):
-            self._test_camera_counter = 0
-        
-        self._test_camera_counter += 1
-        
+        if not hasattr(self, '_test_cam_ctr'):
+            self._test_cam_ctr = 0
+        self._test_cam_ctr += 1
         try:
-            import cv2
-            import numpy as np
-            import base64
-            
-            # 创建测试图像
+            import cv2, numpy as np, base64
             img = np.zeros((240, 320, 3), dtype=np.uint8)
-            cv2.putText(img, f'Test Camera {self._test_camera_counter}', (10, 120), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-            cv2.putText(img, f'Time: {time.strftime("%H:%M:%S")}', (10, 150), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
-            
-            # 编码为JPEG
+            cv2.putText(img, f'Test {self._test_cam_ctr}', (10, 120),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
             _, jpeg_data = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 80])
-            image_base64 = base64.b64encode(jpeg_data).decode('utf-8')
-            
+            b64 = base64.b64encode(jpeg_data).decode('utf-8')
             return {
                 'left_camera': {
-                    'camera_id': 'left_camera',
-                    'topic': '/left_camera/image/compressed',
-                    'timestamp': time.time(),
-                    'sequence': self._test_camera_counter,
-                    'encoding': 'jpeg',
-                    'width': 320,
-                    'height': 240,
-                    'data': image_base64,
-                    'compressed': True,
-                    'compressed_size': len(jpeg_data),
-                    'compression_ratio': 15.0,
-                    'frame_rate': 10.0
+                    'camera_id': 'left_camera', 'topic': '/left_camera/image/compressed',
+                    'timestamp': time.time(), 'sequence': self._test_cam_ctr,
+                    'encoding': 'jpeg', 'width': 320, 'height': 240, 'data': b64,
+                    'compressed': True, 'compressed_size': len(jpeg_data),
+                    'compression_ratio': 15.0, 'frame_rate': 10.0,
                 },
                 'right_camera': {
-                    'camera_id': 'right_camera',
-                    'topic': '/right_camera/image/compressed',
-                    'timestamp': time.time(),
-                    'sequence': self._test_camera_counter,
-                    'encoding': 'jpeg',
-                    'width': 320,
-                    'height': 240,
-                    'data': image_base64,
-                    'compressed': True,
-                    'compressed_size': len(jpeg_data),
-                    'compression_ratio': 15.0,
-                    'frame_rate': 10.0
-                }
+                    'camera_id': 'right_camera', 'topic': '/right_camera/image/compressed',
+                    'timestamp': time.time(), 'sequence': self._test_cam_ctr,
+                    'encoding': 'jpeg', 'width': 320, 'height': 240, 'data': b64,
+                    'compressed': True, 'compressed_size': len(jpeg_data),
+                    'compression_ratio': 15.0, 'frame_rate': 10.0,
+                },
             }
         except ImportError:
-            logger.warning("OpenCV not available, using placeholder camera data")
-            return {
-                'left_camera': {
-                    'camera_id': 'left_camera',
-                    'timestamp': time.time(),
-                    'sequence': self._test_camera_counter,
-                    'encoding': 'jpeg',
-                    'width': 320,
-                    'height': 240,
-                    'data': 'data:image/jpeg;base64,',  # 占位符
-                    'compressed': True,
-                    'compressed_size': 0,
-                    'compression_ratio': 0.0,
-                    'frame_rate': 0.0
-                }
-            }
-        
-    async def get_latest_lidar_data(self) -> Optional[Dict[str, Any]]:
-        """获取最新激光雷达数据"""
-        # 模拟激光雷达数据
-        return {
-            'timestamp': rospy.get_time() if not rospy.is_shutdown() else 0,
-            'point_count': 1000,
-            'data': [0.1, 0.2, 0.3] * 1000,  # 简化的点云数据
-            'fields': ['x', 'y', 'z']
-        }
-        
-    async def get_latest_imu_data(self) -> Optional[Dict[str, Any]]:
-        """获取最新IMU数据"""
-        # 模拟IMU数据
-        return {
-            'timestamp': rospy.get_time() if not rospy.is_shutdown() else 0,
-            'orientation': {'x': 0.0, 'y': 0.0, 'z': 0.0, 'w': 1.0},
-            'angular_velocity': {'x': 0.1, 'y': 0.2, 'z': 0.3},
-            'linear_acceleration': {'x': 9.8, 'y': 0.0, 'z': 0.0}
-        }
-    
-    async def get_latest_gnss_data(self) -> Optional[Dict[str, Any]]:
-        """获取最新GNSS数据"""
-        # 检查所有可能的GNSS话题
-        for gnss_config in self.gnss_topics:
-            topic = gnss_config['topic']
-            if topic in self.latest_data:
-                data = self.latest_data[topic]
-                if data and 'data' in data:
-                    logger.info(f"📡 返回GNSS真实数据: {topic}")
-                    return data['data']
-        
-        # 如果没有真实数据,返回虚拟数据便于测试
-        logger.warning("⚠️  没有真实GNSS数据,返回虚拟数据")
-        return await self._get_test_gnss_data()
-    
+            return {}
+
     async def _get_test_gnss_data(self) -> Dict[str, Any]:
-        """生成虚拟GNSS测试数据"""
-        if not hasattr(self, '_test_gnss_counter'):
-            self._test_gnss_counter = 0
-        
-        self._test_gnss_counter += 1
-        
-        import random
-        import math
-        
-        # 模拟北京附近的GPS坐标，带微小随机漂移
-        base_lat = 39.0790108
-        base_lon = 117.7151327
-        base_alt = -2.5
-        
-        # 添加微小随机漂移(模拟移动)
-        drift = 0.00001  # 约1米的漂移
-        lat = base_lat + random.uniform(-drift, drift)
-        lon = base_lon + random.uniform(-drift, drift)
-        alt = base_alt + random.uniform(-0.1, 0.1)
-        
-        # 模拟RTK状态循环: RTK_FIXED -> RTK_FLOAT -> GPS_3D
-        status_cycle = ['RTK_FIXED', 'RTK_FLOAT', 'GPS_3D']
-        rtk_status = status_cycle[self._test_gnss_counter % 3]
-        
-        # 根据状态设置精度
-        if rtk_status == 'RTK_FIXED':
-            h_acc = random.uniform(0.01, 0.03)  # 1-3cm
-            v_acc = random.uniform(0.02, 0.04)
-            num_sv = random.randint(20, 28)
-            carr_soln = 2
-        elif rtk_status == 'RTK_FLOAT':
-            h_acc = random.uniform(0.1, 0.3)  # 10-30cm
-            v_acc = random.uniform(0.15, 0.35)
-            num_sv = random.randint(15, 22)
-            carr_soln = 1
-        else:  # GPS_3D
-            h_acc = random.uniform(1.0, 3.0)  # 1-3m
-            v_acc = random.uniform(1.5, 4.0)
-            num_sv = random.randint(8, 15)
-            carr_soln = 0
-        
+        if not hasattr(self, '_test_gnss_ctr'):
+            self._test_gnss_ctr = 0
+        self._test_gnss_ctr += 1
+        import random, math
+        base_lat, base_lon, base_alt = 39.0790108, 117.7151327, -2.5
+        drift = 0.00001
+        statuses = ['RTK_FIXED', 'RTK_FLOAT', 'GPS_3D']
+        rtk = statuses[self._test_gnss_ctr % 3]
         return {
-            'rtk_status': rtk_status,
+            'rtk_status': rtk,
             'quality': {
-                'fix_type': 3,
-                'valid_fix': True,
-                'diff_soln': rtk_status in ['RTK_FIXED', 'RTK_FLOAT'],
-                'carr_soln': carr_soln,
-                'num_sv': num_sv
+                'fix_type': 3, 'valid_fix': True,
+                'diff_soln': rtk in ('RTK_FIXED', 'RTK_FLOAT'),
+                'carr_soln': 2 if rtk == 'RTK_FIXED' else 1 if rtk == 'RTK_FLOAT' else 0,
+                'num_sv': random.randint(8, 28),
             },
             'position': {
-                'latitude': round(lat, 8),
-                'longitude': round(lon, 8),
-                'altitude': round(alt, 3),
-                'height_msl': round(alt + 7.0, 3)  # 模拟MSL高度
+                'latitude': round(base_lat + random.uniform(-drift, drift), 8),
+                'longitude': round(base_lon + random.uniform(-drift, drift), 8),
+                'altitude': round(base_alt + random.uniform(-0.1, 0.1), 3),
+                'height_msl': round(base_alt + 7.0 + random.uniform(-0.1, 0.1), 3),
             },
             'accuracy': {
-                'h_acc': round(h_acc, 4),
-                'v_acc': round(v_acc, 4),
-                'p_dop': round(math.sqrt(h_acc**2 + v_acc**2) / 2, 2)
+                'h_acc': round(random.uniform(0.01, 3.0), 4),
+                'v_acc': round(random.uniform(0.02, 4.0), 4),
+                'p_dop': round(random.uniform(0.5, 3.0), 2),
             },
             'velocity': {
                 'vel_n': round(random.uniform(-0.5, 0.5), 3),
                 'vel_e': round(random.uniform(-0.5, 0.5), 3),
                 'vel_d': round(random.uniform(-0.1, 0.1), 3),
-                'vel_acc': round(random.uniform(0.1, 0.3), 3)
+                'vel_acc': round(random.uniform(0.1, 0.3), 3),
             },
-            'time': {
-                'week': 2393,
-                'tow': time.time() % 604800  # GPS周内秒
-            },
+            'time': {'week': 2393, 'tow': time.time() % 604800},
             'timestamp': time.time(),
-            'sequence': self._test_gnss_counter
+            'sequence': self._test_gnss_ctr,
         }
-
-    async def get_latest_slam_data(self) -> Optional[Dict[str, Any]]:
-        """获取最新SLAM数据(轨迹、位姿、点云)"""
-        slam_data = {}
-
-        # 获取Path数据
-        path_topic = self.slam_topics.get('path', '/path')
-        if path_topic in self.latest_data:
-            data = self.latest_data[path_topic]
-            if data and 'data' in data:
-                slam_data['path'] = data['data']
-
-        # 获取Odometry数据
-        odom_topic = self.slam_topics.get('odometry', '/aft_mapped_to_init')
-        if odom_topic in self.latest_data:
-            data = self.latest_data[odom_topic]
-            if data and 'data' in data:
-                slam_data['odometry'] = data['data']
-
-        # 获取RegisteredCloud数据
-        cloud_topic = self.slam_topics.get('registered_cloud', '/cloud_registered')
-        if cloud_topic in self.latest_data:
-            data = self.latest_data[cloud_topic]
-            if data and 'data' in data:
-                slam_data['registered_cloud'] = data['data']
-
-        return slam_data if slam_data else None
-
-    async def get_latest_path_data(self) -> Optional[Dict[str, Any]]:
-        """获取最新轨迹数据"""
-        path_topic = self.slam_topics.get('path', '/path')
-        if path_topic in self.latest_data:
-            data = self.latest_data[path_topic]
-            if data and 'data' in data:
-                return data['data']
-        return None
-
-    async def get_latest_odometry_data(self) -> Optional[Dict[str, Any]]:
-        """获取最新里程计/位姿数据"""
-        odom_topic = self.slam_topics.get('odometry', '/aft_mapped_to_init')
-        if odom_topic in self.latest_data:
-            data = self.latest_data[odom_topic]
-            if data and 'data' in data:
-                return data['data']
-        return None
-
-    async def get_latest_registered_cloud(self) -> Optional[Dict[str, Any]]:
-        """获取最新配准点云数据"""
-        cloud_topic = self.slam_topics.get('registered_cloud', '/cloud_registered')
-        if cloud_topic in self.latest_data:
-            data = self.latest_data[cloud_topic]
-            if data and 'data' in data:
-                return data['data']
-        return None
-
-    def is_connected(self) -> bool:
-        """检查ROS连接状态"""
-        return self._running and self._initialized and not rospy.is_shutdown()
-        
-    def get_connection_info(self) -> Dict[str, Any]:
-        """获取连接信息"""
-        return {
-            'running': self._running,
-            'initialized': self._initialized,
-            'ros_shutdown': rospy.is_shutdown(),
-            'subscriber_count': len(self.subscribers),
-            'data_topics': list(self.latest_data.keys()),
-            'subscriber_status': self.get_subscriber_status()
-        }
-    
-    def get_subscriber_status(self) -> Dict[str, Any]:
-        """获取所有订阅器状态"""
-        status = {}
-        for topic, subscriber in self.subscribers.items():
-            if hasattr(subscriber, 'get_status'):
-                status[topic] = subscriber.get_status()
-            else:
-                status[topic] = {'topic': topic, 'status': 'unknown'}
-        return status
-    
-    def update_camera_settings(self, camera_id: str, preview_height: int = None, jpeg_quality: int = None):
-        """更新相机设置"""
-        for topic, subscriber in self.subscribers.items():
-            if hasattr(subscriber, 'camera_id') and subscriber.camera_id == camera_id:
-                if hasattr(subscriber, 'update_settings'):
-                    subscriber.update_settings(preview_height, jpeg_quality)
-                    logger.info(f"Updated settings for camera {camera_id}")
-                    return True
-        logger.warning(f"Camera {camera_id} not found for settings update")
-        return False
-        
-    async def shutdown(self):
-        """关闭ROS节点管理器"""
-        try:
-            self._running = False
-            
-            # 关闭所有订阅器
-            for topic, subscriber in self.subscribers.items():
-                if hasattr(subscriber, 'shutdown'):
-                    subscriber.shutdown()
-            
-            # 关闭ROS节点
-            if not rospy.is_shutdown():
-                rospy.signal_shutdown("Application shutdown")
-            
-            logger.info("ROS Node Manager shutdown completed")
-        except Exception as e:
-            logger.error(f"ROS shutdown error: {e}")

@@ -3,9 +3,9 @@ uvicorn[standard]==0.29.0
 websockets==12.0
 pydantic==2.7.1
 
-# ROS dependencies
-# rospy # 通过系统ROS安装，不用pip
-# cv_bridge # 通过系统ROS安装
+# ROS bridge (rosbridge WebSocket client)
+# 替代 rospy 直连，支持后端与机器人分离部署
+roslibpy==1.4.0
 
 # Image processing
 opencv-python==4.8.1.78

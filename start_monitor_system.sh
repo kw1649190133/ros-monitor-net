@@ -36,66 +36,25 @@ if [ ! -f "ros_monitor_backend/start_backend.sh" ]; then
     exit 1
 fi
 
-# 检查ROS环境
-if [ -z "$ROS_DISTRO" ]; then
-    echo "⚠️  ROS环境未加载，尝试加载..."
-    if [ -f "/opt/ros/noetic/setup.bash" ]; then
-        source /opt/ros/noetic/setup.bash
-        echo "✅ ROS Noetic环境已加载"
-    elif [ -f "/opt/ros/melodic/setup.bash" ]; then
-        source /opt/ros/melodic/setup.bash
-        echo "✅ ROS Melodic环境已加载"
-    else
-        echo "❌ 未找到ROS环境，请手动加载"
-        echo "   运行: source /opt/ros/noetic/setup.bash"
-        exit 1
-    fi
-else
-    echo "✅ ROS环境已加载: $ROS_DISTRO"
-fi
+# rosbridge 配置
+ROSBRIDGE_HOST=${ROSBRIDGE_HOST:-"localhost"}
+ROSBRIDGE_PORT=${ROSBRIDGE_PORT:-"9090"}
+export ROSBRIDGE_HOST
+export ROSBRIDGE_PORT
 
-# 加载IKing Handbot工作空间
-if [ -f "devel/setup.bash" ]; then
-    echo "🏠 加载IKing Handbot工作空间..."
-    source devel/setup.bash
-    echo "✅ 工作空间已加载"
-else
-    echo "⚠️  工作空间未编译，尝试编译..."
-    if [ -f "src/CMakeLists.txt" ]; then
-        echo "🔨 编译工作空间..."
-        catkin_make
-        source devel/setup.bash
-        echo "✅ 工作空间编译完成并加载"
-    else
-        echo "❌ 未找到CMakeLists.txt，跳过工作空间加载"
-    fi
-fi
+echo "rosbridge 连接目标: ws://${ROSBRIDGE_HOST}:${ROSBRIDGE_PORT}"
 
-# 检查ROS Master
-echo "🔍 检查ROS Master状态..."
-if ! rostopic list > /dev/null 2>&1; then
-    echo "⚠️  ROS Master未运行，尝试启动..."
-    echo "   请在新终端运行: roscore"
-    echo "   或者启动您的ROS系统"
+# 检查 rosbridge 是否可达
+echo "🔍 检查 rosbridge 连接..."
+if timeout 3 bash -c "echo > /dev/tcp/${ROSBRIDGE_HOST}/${ROSBRIDGE_PORT}" 2>/dev/null; then
+    echo "✅ rosbridge 端口可达"
+else
+    echo "⚠️  rosbridge 端口不可达"
+    echo "   请确保机器人端已启动:"
+    echo "     1. roscore"
+    echo "     2. roslaunch rosbridge_server rosbridge_websocket.launch"
+    echo "   如需安装: sudo apt-get install ros-<distro>-rosbridge-suite"
     echo ""
-    read -p "ROS Master是否已启动？(y/n): " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        echo "请先启动ROS Master，然后重新运行此脚本"
-        exit 1
-    fi
-else
-    echo "✅ ROS Master运行正常"
-fi
-
-# 检查相机话题
-echo "📷 检查相机话题..."
-camera_topics=$(rostopic list | grep -E "(camera|image)" || true)
-if [ -n "$camera_topics" ]; then
-    echo "✅ 找到相机话题:"
-    echo "$camera_topics" | sed 's/^/  - /'
-else
-    echo "⚠️  未找到相机话题，系统将使用测试数据"
 fi
 
 # 清理端口占用
