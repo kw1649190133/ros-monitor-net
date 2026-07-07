@@ -257,10 +257,57 @@ class RobotAgentROS2(Node):
     def _on_ws_message(self, ws, message):
         try:
             data = json.loads(message)
-            if data.get('type') == 'robot_registered':
+            msg_type = data.get('type', '')
+            
+            if msg_type == 'robot_registered':
                 logger.info(f"服务器确认注册: {data.get('message', '')}")
+            
+            elif msg_type == 'robot_command':
+                cmd = data.get('command', {})
+                action = cmd.get('action', '')
+                logger.info(f"收到云端指令: {action}")
+                self._handle_command(cmd)
+                
         except Exception:
             pass
+
+    def _handle_command(self, cmd: dict):
+        """处理云端下发的控制指令。"""
+        action = cmd.get('action', '')
+        
+        if action == 'restart_agent':
+            logger.info("收到重启指令，正在重启...")
+            self._running = False
+            # 重新初始化
+            self._running = True
+            logger.info("代理已重置")
+        
+        elif action == 'set_reconnect_delay':
+            delay = cmd.get('value', 3)
+            self._reconnect_delay = max(1, min(60, int(delay)))
+            logger.info(f"重连间隔已设为 {self._reconnect_delay}s")
+        
+        elif action == 'status':
+            # 返回机器人状态
+            import psutil
+            status = {
+                'type': 'robot_status',
+                'robot_id': self.robot_id,
+                'cpu_percent': psutil.cpu_percent(),
+                'memory_percent': psutil.virtual_memory().percent,
+                'disk_percent': psutil.disk_usage('/').percent,
+                'local_ip': self._get_local_ip(),
+                'ros_topics': self._get_active_topics(),
+            }
+            self._send_json(status)
+        
+        elif action == 'ros_service_call':
+            # 预留：调用 ROS2 Service
+            service_name = cmd.get('service', '')
+            logger.info(f"ROS Service 调用: {service_name} (需实现)")
+        
+        else:
+            logger.info(f"未知指令: {action}")
 
     def _on_ws_error(self, ws, error):
         logger.error(f"WebSocket 错误: {error}")
@@ -425,6 +472,19 @@ class RobotAgentROS2(Node):
             return ip
         except Exception:
             return 'unknown'
+
+    def _get_active_topics(self) -> list:
+        """返回当前活跃的话题列表。"""
+        try:
+            from rclpy.qos import qos_profile_sensor_data
+            topic_names = [
+                self.lidar_topic, self.imu_topic,
+                self.gnss_topic, self.path_topic,
+                self.odom_topic, self.cloud_topic
+            ] + self.camera_topics
+            return topic_names
+        except Exception:
+            return []
 
 
 # ============================================================

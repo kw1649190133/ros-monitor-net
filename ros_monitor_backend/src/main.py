@@ -283,6 +283,41 @@ async def handle_websocket_message(client_id: str, message: dict):
                     "type": "error",
                     "message": "ROS管理器未初始化"
                 }, client_id)
+        
+        elif msg_type == "robot_command":
+            # 浏览器 → 云端 → 地面站中继 → 机器人 控制指令
+            target_robot = message.get("robot_id", "")
+            command = message.get("command", {})
+            
+            if not target_robot:
+                await connection_manager.send_personal_message({
+                    "type": "error", "message": "缺少 target robot_id"
+                }, client_id)
+            elif target_robot not in robot_connections:
+                await connection_manager.send_personal_message({
+                    "type": "error", "message": f"机器人 {target_robot} 不在线"
+                }, client_id)
+            else:
+                try:
+                    payload = {
+                        "type": "robot_command",
+                        "command": command,
+                        "from_client": client_id,
+                        "timestamp": time.time(),
+                    }
+                    await robot_connections[target_robot]['ws'].send_json(payload)
+                    await connection_manager.send_personal_message({
+                        "type": "robot_command_sent",
+                        "robot_id": target_robot,
+                        "command": command,
+                        "message": f"指令已下发到 {target_robot}"
+                    }, client_id)
+                    logger.info(f"指令下发: [{target_robot}] {command}")
+                except Exception as e:
+                    logger.error(f"指令下发失败 [{target_robot}]: {e}")
+                    await connection_manager.send_personal_message({
+                        "type": "error", "message": f"指令下发失败: {e}"
+                    }, client_id)
                 
         else:
             logger.warning(f"Unknown message type from {client_id}: {msg_type}")
@@ -393,6 +428,51 @@ async def background_broadcast():
             logger.error(f"Background broadcast error: {e}")
         
         await asyncio.sleep(0.1)  # 10Hz推送频率
+
+# ---- 云端控制 REST API ----
+
+@app.post("/api/v1/robot/{robot_id}/command")
+async def send_robot_command(robot_id: str, command: dict):
+    """向指定机器人下发控制指令。
+    
+    POST /api/v1/robot/rov1/command
+    {
+        "action": "set_param",
+        "param": "max_speed",
+        "value": 0.5
+    }
+    """
+    if robot_id not in robot_connections:
+        return {"success": False, "message": f"机器人 {robot_id} 不在线"}
+    
+    try:
+        payload = {
+            "type": "robot_command",
+            "command": command,
+            "from": "rest_api",
+            "timestamp": time.time(),
+        }
+        await robot_connections[robot_id]['ws'].send_json(payload)
+        logger.info(f"REST指令下发: [{robot_id}] {command}")
+        return {"success": True, "message": f"指令已下发到 {robot_id}"}
+    except Exception as e:
+        logger.error(f"REST指令下发失败 [{robot_id}]: {e}")
+        return {"success": False, "message": str(e)}
+
+
+@app.get("/api/v1/robots")
+async def list_robots():
+    """列出所有在线机器人。"""
+    return {
+        "success": True,
+        "robots": [
+            {"robot_id": rid, "hostname": info.get('hostname', '?'),
+             "ip": info.get('ip', '?'), "last_seen": info.get('last_seen', 0)}
+            for rid, info in robot_connections.items()
+        ],
+        "count": len(robot_connections),
+    }
+
 
 # 注册数据采集路由
 from src.api.v1.data_collection import router as data_collection_router

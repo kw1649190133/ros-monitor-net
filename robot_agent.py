@@ -228,8 +228,30 @@ class RobotAgent:
                 logger.info(f"服务器确认注册: {data.get('message', '')}")
             elif msg_type == 'ping':
                 self._send({'type': 'pong', 'timestamp': time.time()})
+            elif msg_type == 'robot_command':
+                cmd = data.get('command', {})
+                logger.info(f"收到云端指令: {cmd.get('action', '')}")
+                self._handle_command(cmd)
         except Exception:
             pass
+
+    def _handle_command(self, cmd: dict):
+        """处理云端下发的控制指令。"""
+        action = cmd.get('action', '')
+        if action == 'restart_agent':
+            logger.info("收到重启指令")
+            self._running = False
+            self._running = True
+        elif action == 'set_reconnect_delay':
+            self._reconnect_delay = max(1, min(60, int(cmd.get('value', 3))))
+        elif action == 'status':
+            self._send({
+                'type': 'robot_status',
+                'robot_id': self.robot_id,
+                'local_ip': self._get_local_ip(),
+            })
+        else:
+            logger.info(f"未知指令: {action}")
 
     def _on_ws_error(self, ws, error):
         logger.error(f"WebSocket 错误: {error}")
