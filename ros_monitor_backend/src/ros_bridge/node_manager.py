@@ -376,6 +376,9 @@ class _CameraHandler:
 class ROSNodeManager:
     """ROS 节点管理器 —— 通过 rosbridge 远程订阅 topic。
 
+    支持多机器人：latest_data 改为 {robot_id: {topic: data}}。
+    向后兼容：不带 robot_id 时返回第一个机器人的数据。
+
     环境变量:
         ROSBRIDGE_HOST: rosbridge 服务器 IP（默认 localhost）
         ROSBRIDGE_PORT: rosbridge 端口（默认 9090）
@@ -383,7 +386,7 @@ class ROSNodeManager:
 
     def __init__(self):
         self.subscribers: Dict[str, Any] = {}
-        self.latest_data: Dict[str, Any] = {}
+        self.robot_data: Dict[str, Dict[str, Any]] = {}   # {robot_id: {topic: entry}}
         self._lock = threading.Lock()
         self._running = False
         self._initialized = False
@@ -530,52 +533,61 @@ class ROSNodeManager:
 
         logger.info(f"订阅器设置完毕: {subscribed}/{len(self.subscribers)} 个活跃")
 
-    def _update_data(self, topic: str, data: Dict[str, Any]):
-        """线程安全地更新最新数据。"""
+    def _update_data(self, topic: str, data: Dict[str, Any], robot_id: str = '_direct'):
+        """线程安全地更新最新数据。robot_id='_direct' 为 rosbridge 直连模式。"""
         with self._lock:
-            self.latest_data[topic] = {
+            if robot_id not in self.robot_data:
+                self.robot_data[robot_id] = {}
+            self.robot_data[robot_id][topic] = {
                 'timestamp': time.time(),
                 'data': data,
                 'updated_at': time.time(),
             }
-        logger.debug(f"数据更新: {topic}")
+        logger.debug(f"数据更新: [{robot_id}] {topic}")
+
+    def _robot_topic(self, topic: str, robot_id: str = None) -> Optional[Dict]:
+        """获取指定机器人 + 话题的数据，robot_id 为 None 返回第一个匹配的。"""
+        with self._lock:
+            if robot_id and robot_id in self.robot_data:
+                return self.robot_data[robot_id].get(topic)
+            if robot_id is None:
+                for rid in self.robot_data:
+                    if topic in self.robot_data[rid]:
+                        return self.robot_data[rid][topic]
+        return None
 
     # ------------------------------------------------------------------
     # 数据获取方法（供 background_broadcast 调用）
     # ------------------------------------------------------------------
 
-    async def get_latest_camera_data(self) -> Optional[Dict[str, Any]]:
+    async def get_latest_camera_data(self, robot_id: str = None) -> Optional[Dict[str, Any]]:
         camera_data = {}
         
-        # 方式1: 按配置的话题查找
         for topic in self.camera_topics:
-            with self._lock:
-                entry = self.latest_data.get(topic)
+            entry = self._robot_topic(topic, robot_id)
             if entry and 'data' in entry:
                 d = entry['data']
                 camera_id = d.get('camera_id', topic.split('/')[-2])
                 camera_data[camera_id] = d
 
-        # 方式2: 扫描所有 latest_data 中的相机数据（机器人推送模式）
+        # fallback: 扫描所有机器人数据中的相机条目
         if not camera_data:
             with self._lock:
-                for topic, entry in list(self.latest_data.items()):
-                    if 'data' in entry and isinstance(entry['data'], dict):
-                        d = entry['data']
-                        if 'camera_id' in d and 'data' in d:
+                for rid in (robot_id and [robot_id] or self.robot_data):
+                    for topic, entry in self.robot_data.get(rid, {}).items():
+                        d = entry.get('data', {})
+                        if isinstance(d, dict) and 'camera_id' in d and 'data' in d:
                             camera_data[d['camera_id']] = d
 
         if not camera_data:
             camera_data = await self._get_test_camera_data()
         return camera_data if camera_data else None
 
-    async def get_latest_lidar_data(self) -> Optional[Dict[str, Any]]:
+    async def get_latest_lidar_data(self, robot_id: str = None) -> Optional[Dict[str, Any]]:
         for topic in self.lidar_topics:
-            with self._lock:
-                entry = self.latest_data.get(topic)
+            entry = self._robot_topic(topic, robot_id)
             if entry and 'data' in entry:
                 return entry['data']
-        # 后备：返回虚拟数据用于前端调试
         return {
             'timestamp': time.time(),
             'point_count': 100,
@@ -584,10 +596,9 @@ class ROSNodeManager:
             'compression': 'none',
         }
 
-    async def get_latest_imu_data(self) -> Optional[Dict[str, Any]]:
+    async def get_latest_imu_data(self, robot_id: str = None) -> Optional[Dict[str, Any]]:
         for topic in self.imu_topics:
-            with self._lock:
-                entry = self.latest_data.get(topic)
+            entry = self._robot_topic(topic, robot_id)
             if entry and 'data' in entry:
                 return entry['data']
         return {
@@ -597,39 +608,52 @@ class ROSNodeManager:
             'linear_acceleration': {'x': 9.8, 'y': 0.0, 'z': 0.0},
         }
 
-    async def get_latest_gnss_data(self) -> Optional[Dict[str, Any]]:
+    async def get_latest_gnss_data(self, robot_id: str = None) -> Optional[Dict[str, Any]]:
         for cfg in self.gnss_topics:
-            topic = cfg['topic']
-            with self._lock:
-                entry = self.latest_data.get(topic)
+            entry = self._robot_topic(cfg['topic'], robot_id)
             if entry and 'data' in entry:
                 return entry['data']
         return await self._get_test_gnss_data()
 
-    async def get_latest_slam_data(self) -> Optional[Dict[str, Any]]:
+    async def get_latest_slam_data(self, robot_id: str = None) -> Optional[Dict[str, Any]]:
         slam_data = {}
         for key in ('path', 'odometry', 'registered_cloud'):
             topic = self.slam_topics[key]
-            with self._lock:
-                entry = self.latest_data.get(topic)
+            entry = self._robot_topic(topic, robot_id)
             if entry and 'data' in entry:
                 slam_data[key] = entry['data']
         return slam_data if slam_data else None
+
+    # ------------------------------------------------------------------
+    # 多机器人查询接口
+    # ------------------------------------------------------------------
+
+    def get_robot_list(self) -> list:
+        """返回所有在线机器人 ID 列表。"""
+        with self._lock:
+            return [rid for rid in self.robot_data if rid != '_direct']
+
+    def get_robot_data(self, robot_id: str) -> Dict[str, Any]:
+        """返回指定机器人的全部最新数据。"""
+        with self._lock:
+            return dict(self.robot_data.get(robot_id, {}))
 
     # ------------------------------------------------------------------
     # 连接状态
     # ------------------------------------------------------------------
 
     def is_connected(self) -> bool:
-        return self._running and self._initialized and self.rosbridge.is_connected
+        return self._running and self._initialized and (self.rosbridge.is_connected or len(self.robot_data) > 0)
 
     def get_connection_info(self) -> Dict[str, Any]:
+        robot_ids = self.get_robot_list()
         return {
             'running': self._running,
             'initialized': self._initialized,
             'rosbridge_connected': self.rosbridge.is_connected,
             'subscriber_count': len(self.subscribers),
-            'data_topics': list(self.latest_data.keys()),
+            'robot_count': len(robot_ids),
+            'robot_ids': robot_ids,
             'subscribed_topics': self.rosbridge.get_subscribed_topics(),
             'subscriber_status': self.get_subscriber_status(),
         }
@@ -653,7 +677,7 @@ class ROSNodeManager:
         self.rosbridge.close()
         self.subscribers.clear()
         with self._lock:
-            self.latest_data.clear()
+            self.robot_data.clear()
         logger.info("ROSNodeManager 已关闭")
 
     # ------------------------------------------------------------------

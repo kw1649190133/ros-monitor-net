@@ -172,8 +172,10 @@ async def _handle_robot_message(robot_id: str, message: dict):
         data = message.get('data', {})
         
         if ros_manager and topic_name:
-            ros_manager._update_data(topic_name, data)
+            ros_manager._update_data(topic_name, data, robot_id=robot_id)
             _robot_data_active = True
+            # 广播 robot_list 给浏览器
+            await _broadcast_robot_list()
             
         if robot_id in robot_connections:
             robot_connections[robot_id]['last_seen'] = time.time()
@@ -318,6 +320,16 @@ async def handle_websocket_message(client_id: str, message: dict):
                     await connection_manager.send_personal_message({
                         "type": "error", "message": f"指令下发失败: {e}"
                     }, client_id)
+        
+        elif msg_type == "select_robot":
+            # 浏览器选择查看某个机器人（前端过滤用）
+            selected = message.get("robot_id", "")
+            logger.info(f"Client {client_id} 选择机器人: {selected or '全部'}")
+            await connection_manager.send_personal_message({
+                "type": "robot_selected",
+                "robot_id": selected,
+                "message": f"已切换到 {selected}" if selected else "显示全部机器人",
+            }, client_id)
                 
         else:
             logger.warning(f"Unknown message type from {client_id}: {msg_type}")
@@ -334,100 +346,87 @@ async def handle_websocket_message(client_id: str, message: dict):
         }, client_id)
 
 async def background_broadcast():
-    """后台数据广播任务 —— 从 ros_manager.latest_data 读取并推送给浏览器客户端。"""
+    """后台数据广播任务 —— 按机器人逐个读取数据并推送给浏览器客户端。"""
     while True:
         try:
-            if ros_manager and (ros_manager.is_connected() or _robot_data_active):
-                # 获取最新的传感器数据
-                camera_data = await ros_manager.get_latest_camera_data()
-                lidar_data = await ros_manager.get_latest_lidar_data()
-                imu_data = await ros_manager.get_latest_imu_data()
-                gnss_data = await ros_manager.get_latest_gnss_data()
+            robot_ids = ros_manager.get_robot_list() if ros_manager else []
+            
+            # 如果没有机器人数据但 rosbridge 模式活跃（兼容旧模式）
+            has_any_data = len(robot_ids) > 0
+            if not has_any_data and ros_manager and ros_manager.is_connected():
+                has_any_data = True
+                robot_ids = ['_direct']  # rosbridge 模式下的伪机器人 ID
+            
+            if ros_manager and (has_any_data or _robot_data_active):
+                # 按机器人逐个广播
+                for rid in robot_ids:
+                    _broadcast_for_robot(rid)
                 
-                # 调试日志: 检查GNSS数据获取
-                if gnss_data:
-                    logger.info(f"获取到GNSS数据: RTK={gnss_data.get('rtk_status')}, 卡星={gnss_data.get('quality', {}).get('num_sv', 0)}")
-                
-                # 推送给订阅的客户端
-                if camera_data:
-                    logger.info(f"广播相机数据: {list(camera_data.keys())}")
-                    for camera_id, data in camera_data.items():
-                        message = {
-                            "type": "camera",
-                            "camera_id": camera_id,
-                            "data": data,
-                            "timestamp": time.time()
-                        }
-                        await connection_manager.broadcast_to_subscribers("camera", message)
-                        logger.info(f"相机 {camera_id} 数据已广播，帧数: {data.get('sequence', 0)}")
-                else:
-                    logger.debug("没有相机数据可广播")
-                
-                if lidar_data:
-                    message = {
-                        "type": "lidar",
-                        "data": lidar_data,
-                        "timestamp": time.time()
-                    }
-                    await connection_manager.broadcast_to_subscribers("lidar", message)
-                    
-                if imu_data:
-                    message = {
-                        "type": "imu",
-                        "data": imu_data,
-                        "timestamp": time.time()
-                    }
-                    await connection_manager.broadcast_to_subscribers("imu", message)
-                
-                # 广播GNSS数据
-                if gnss_data:
-                    message = {
-                        "type": "gnss",
-                        "data": gnss_data,
-                        "timestamp": time.time()
-                    }
-                    await connection_manager.broadcast_to_subscribers("gnss", message)
-                    logger.info(f"GNSS数据已广播, RTK状态: {gnss_data.get('rtk_status', 'UNKNOWN')}, 卡星数: {gnss_data.get('quality', {}).get('num_sv', 0)}")
-                else:
-                    logger.debug("没有GNSS数据可广播")
-
-                # 广播SLAM数据(轨迹、位姿、点云)
-                slam_data = await ros_manager.get_latest_slam_data()
-                if slam_data:
-                    # 广播Path数据
-                    if 'path' in slam_data:
-                        message = {
-                            "type": "slam_path",
-                            "data": slam_data['path'],
-                            "timestamp": time.time()
-                        }
-                        await connection_manager.broadcast_to_subscribers("slam", message)
-                        logger.debug(f"Path数据已广播, 点数: {slam_data['path'].get('total_poses', 0)}")
-
-                    # 广播Odometry数据
-                    if 'odometry' in slam_data:
-                        message = {
-                            "type": "slam_odometry",
-                            "data": slam_data['odometry'],
-                            "timestamp": time.time()
-                        }
-                        await connection_manager.broadcast_to_subscribers("slam", message)
-                        logger.debug(f"Odometry数据已广播")
-
-                    # 广播RegisteredCloud数据
-                    if 'registered_cloud' in slam_data:
-                        message = {
-                            "type": "slam_cloud",
-                            "data": slam_data['registered_cloud'],
-                            "timestamp": time.time()
-                        }
-                        await connection_manager.broadcast_to_subscribers("slam", message)
-                        logger.debug(f"RegisteredCloud数据已广播, 点数: {slam_data['registered_cloud'].get('sampled_points', 0)}")
-
         except Exception as e:
             logger.error(f"Background broadcast error: {e}")
         
         await asyncio.sleep(0.1)  # 10Hz推送频率
+
+
+async def _broadcast_for_robot(robot_id: str):
+    """广播指定机器人的全部传感器数据。"""
+    try:
+        # 获取该机器人的最新数据
+        camera_data = await ros_manager.get_latest_camera_data(robot_id) if robot_id != '_direct' else await ros_manager.get_latest_camera_data()
+        lidar_data  = await ros_manager.get_latest_lidar_data(robot_id) if robot_id != '_direct' else await ros_manager.get_latest_lidar_data()
+        imu_data    = await ros_manager.get_latest_imu_data(robot_id) if robot_id != '_direct' else await ros_manager.get_latest_imu_data()
+        gnss_data   = await ros_manager.get_latest_gnss_data(robot_id) if robot_id != '_direct' else await ros_manager.get_latest_gnss_data()
+        slam_data   = await ros_manager.get_latest_slam_data(robot_id) if robot_id != '_direct' else await ros_manager.get_latest_slam_data()
+
+        # 公共标签
+        robot_tag = {"robot_id": robot_id} if robot_id != '_direct' else {}
+
+        # 相机
+        if camera_data:
+            for camera_id, data in camera_data.items():
+                await connection_manager.broadcast_to_subscribers("camera", {
+                    "type": "camera", "camera_id": camera_id,
+                    "data": data, "timestamp": time.time(), **robot_tag,
+                })
+        # LiDAR
+        if lidar_data:
+            await connection_manager.broadcast_to_subscribers("lidar", {
+                "type": "lidar", "data": lidar_data, "timestamp": time.time(), **robot_tag,
+            })
+        # IMU
+        if imu_data:
+            await connection_manager.broadcast_to_subscribers("imu", {
+                "type": "imu", "data": imu_data, "timestamp": time.time(), **robot_tag,
+            })
+        # GNSS
+        if gnss_data:
+            await connection_manager.broadcast_to_subscribers("gnss", {
+                "type": "gnss", "data": gnss_data, "timestamp": time.time(), **robot_tag,
+            })
+        # SLAM
+        if slam_data:
+            for key, msg_type in [('path', 'slam_path'), ('odometry', 'slam_odometry'), ('registered_cloud', 'slam_cloud')]:
+                if key in slam_data:
+                    await connection_manager.broadcast_to_subscribers("slam", {
+                        "type": msg_type, "data": slam_data[key],
+                        "timestamp": time.time(), **robot_tag,
+                    })
+    except Exception as e:
+        logger.error(f"广播机器人 [{robot_id}] 失败: {e}")
+
+
+async def _broadcast_robot_list():
+    """广播在线机器人列表给所有浏览器客户端。"""
+    if not ros_manager:
+        return
+    robot_ids = ros_manager.get_robot_list()
+    msg = {
+        "type": "robot_list_updated",
+        "robots": robot_ids,
+        "count": len(robot_ids),
+        "timestamp": time.time(),
+    }
+    await connection_manager.broadcast_to_all(msg)
 
 # ---- 云端控制 REST API ----
 
