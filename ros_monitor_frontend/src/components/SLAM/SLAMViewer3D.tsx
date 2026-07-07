@@ -32,16 +32,17 @@ const CoordinateAxes: React.FC<{ size?: number }> = ({ size = 2 }) => {
 
 // 轨迹线组件
 const TrajectoryLine: React.FC = () => {
-  const { slam } = useSensorStore();
+  const { robotData, activeRobotId } = useSensorStore();
+  const slam = activeRobotId ? robotData[activeRobotId]?.slam : null;
   
   const points = useMemo(() => {
-    if (!slam.path?.poses?.length) return [];
-    return slam.path.poses.map(pose => [
+    if (!slam?path?.poses?.length) return [];
+    return slam?path.poses.map(pose => [
       pose.position.x,
       pose.position.y,
       pose.position.z
     ] as [number, number, number]);
-  }, [slam.path]);
+  }, [slam?path]);
   
   if (points.length < 2) return null;
   
@@ -56,12 +57,13 @@ const TrajectoryLine: React.FC = () => {
 
 // 当前位姿标记组件
 const CurrentPoseMarker: React.FC = () => {
-  const { slam } = useSensorStore();
+  const { robotData, activeRobotId } = useSensorStore();
+  const slam = activeRobotId ? robotData[activeRobotId]?.slam : null;
   const groupRef = useRef<THREE.Group>(null);
   
-  if (!slam.odometry?.pose) return null;
+  if (!slam?odometry?.pose) return null;
   
-  const { position, orientation } = slam.odometry.pose;
+  const { position, orientation } = slam?odometry.pose;
   
   // 四元数转欧拉角
   const quaternion = new THREE.Quaternion(
@@ -90,14 +92,15 @@ const CurrentPoseMarker: React.FC = () => {
 
 // 当前帧点云组件 - 固定红色显示
 const CurrentFrameCloud: React.FC = () => {
-  const { slam } = useSensorStore();
+  const { robotData, activeRobotId } = useSensorStore();
+  const slam = activeRobotId ? robotData[activeRobotId]?.slam : null;
   const pointsRef = useRef<THREE.Points>(null);
 
   const geometry = useMemo(() => {
     const geo = new THREE.BufferGeometry();
 
     // 当前帧点云
-    const cloud = slam.registeredCloud;
+    const cloud = slam?registeredCloud;
     if (!cloud?.points?.length) {
       geo.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
       return geo;
@@ -112,7 +115,7 @@ const CurrentFrameCloud: React.FC = () => {
 
     geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     return geo;
-  }, [slam.registeredCloud]);
+  }, [slam?registeredCloud]);
 
   return (
     <points ref={pointsRef} geometry={geometry}>
@@ -130,14 +133,15 @@ const CurrentFrameCloud: React.FC = () => {
 
 // 历史地图点云组件 - 使用真实RGB颜色
 const HistoryMapCloud: React.FC = () => {
-  const { slam } = useSensorStore();
+  const { robotData, activeRobotId } = useSensorStore();
+  const slam = activeRobotId ? robotData[activeRobotId]?.slam : null;
   const pointsRef = useRef<THREE.Points>(null);
 
   const geometry = useMemo(() => {
     const geo = new THREE.BufferGeometry();
 
     // 只使用历史点云 (排除最新一帧，最新一帧用CurrentFrameCloud显示)
-    const historyCount = slam.cloudHistory?.length || 0;
+    const historyCount = slam?cloudHistory?.length || 0;
     if (historyCount <= 1) {
       geo.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
       geo.setAttribute('color', new THREE.Float32BufferAttribute([], 3));
@@ -145,9 +149,9 @@ const HistoryMapCloud: React.FC = () => {
     }
 
     // 历史点云不包含最后一帧(当前帧)
-    // const historyData = slam.cloudHistory.slice(0, -1);
+    // const historyData = slam?cloudHistory.slice(0, -1);
  
-    const historyData = slam.cloudHistory;
+    const historyData = slam?cloudHistory;
 
     // 计算总点数
     let totalPoints = 0;
@@ -192,7 +196,7 @@ const HistoryMapCloud: React.FC = () => {
     geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
     return geo;
-  }, [slam.cloudHistory]);
+  }, [slam?cloudHistory]);
 
   return (
     <points ref={pointsRef} geometry={geometry}>

@@ -13,7 +13,9 @@ import { wsService } from '../../services/websocket';
 const { Text } = Typography;
 
 const GNSSStatusPanel: React.FC = () => {
-  const gnssData = useSensorStore((state) => state.gnss.latest);
+  const { robotData, activeRobotId } = useSensorStore();
+  const gnss = activeRobotId ? robotData[activeRobotId]?.gnss : null;
+  const latest = gnss?.latest || null;
   
   // 订阅GNSS话题
   useEffect(() => {
@@ -39,7 +41,7 @@ const GNSSStatusPanel: React.FC = () => {
     };
   }, []);
   
-  if (!gnssData) {
+  if (!latest) {
     return (
       <Card title="GNSS/RTK 状态">
         <Text type="secondary">暂无GNSS数据</Text>
@@ -97,7 +99,7 @@ const GNSSStatusPanel: React.FC = () => {
     }
   };
   
-  const statusConfig = getRTKStatusConfig(gnssData.rtk_status);
+  const statusConfig = getRTKStatusConfig(latest.rtk_status);
   
   /**
    * 根据卫星数量获取颜色
@@ -130,9 +132,9 @@ const GNSSStatusPanel: React.FC = () => {
         <Col span={8}>
           <Statistic 
             title="卫星数量" 
-            value={gnssData.quality.num_sv}
+            value={latest.quality.num_sv}
             suffix="颗"
-            valueStyle={{ color: getSatelliteColor(gnssData.quality.num_sv) }}
+            valueStyle={{ color: getSatelliteColor(latest.quality.num_sv) }}
           />
         </Col>
       </Row>
@@ -143,32 +145,32 @@ const GNSSStatusPanel: React.FC = () => {
           <Col span={8}>
             <Statistic 
               title="水平精度" 
-              value={gnssData.accuracy.h_acc}
+              value={latest.accuracy.h_acc}
               precision={3}
               suffix="m"
               valueStyle={{ 
-                color: gnssData.accuracy.h_acc < 0.1 ? '#52c41a' : '#faad14' 
+                color: latest.accuracy.h_acc < 0.1 ? '#52c41a' : '#faad14' 
               }}
             />
           </Col>
           <Col span={8}>
             <Statistic 
               title="垂直精度" 
-              value={gnssData.accuracy.v_acc}
+              value={latest.accuracy.v_acc}
               precision={3}
               suffix="m"
               valueStyle={{ 
-                color: gnssData.accuracy.v_acc < 0.1 ? '#52c41a' : '#faad14' 
+                color: latest.accuracy.v_acc < 0.1 ? '#52c41a' : '#faad14' 
               }}
             />
           </Col>
           <Col span={8}>
             <Statistic 
               title="PDOP" 
-              value={gnssData.accuracy.p_dop}
+              value={latest.accuracy.p_dop}
               precision={2}
               valueStyle={{ 
-                color: gnssData.accuracy.p_dop < 2 ? '#52c41a' : '#faad14' 
+                color: latest.accuracy.p_dop < 2 ? '#52c41a' : '#faad14' 
               }}
             />
           </Col>
@@ -181,7 +183,7 @@ const GNSSStatusPanel: React.FC = () => {
           <Col span={12}>
             <Statistic 
               title="纬度" 
-              value={gnssData.position.latitude}
+              value={latest.position.latitude}
               precision={7}
               suffix="°"
             />
@@ -189,7 +191,7 @@ const GNSSStatusPanel: React.FC = () => {
           <Col span={12}>
             <Statistic 
               title="经度" 
-              value={gnssData.position.longitude}
+              value={latest.position.longitude}
               precision={7}
               suffix="°"
             />
@@ -197,7 +199,7 @@ const GNSSStatusPanel: React.FC = () => {
           <Col span={12}>
             <Statistic 
               title="海拔" 
-              value={gnssData.position.height_msl}
+              value={latest.position.height_msl}
               precision={2}
               suffix="m"
             />
@@ -205,7 +207,7 @@ const GNSSStatusPanel: React.FC = () => {
           <Col span={12}>
             <Statistic 
               title="椭球高" 
-              value={gnssData.position.altitude}
+              value={latest.position.altitude}
               precision={2}
               suffix="m"
             />
@@ -219,30 +221,30 @@ const GNSSStatusPanel: React.FC = () => {
           <Col span={12}>
             <Space>
               <Text type="secondary">定位有效:</Text>
-              <Tag color={gnssData.quality.valid_fix ? 'success' : 'error'}>
-                {gnssData.quality.valid_fix ? '是' : '否'}
+              <Tag color={latest.quality.valid_fix ? 'success' : 'error'}>
+                {latest.quality.valid_fix ? '是' : '否'}
               </Tag>
             </Space>
           </Col>
           <Col span={12}>
             <Space>
               <Text type="secondary">差分解:</Text>
-              <Tag color={gnssData.quality.diff_soln ? 'success' : 'default'}>
-                {gnssData.quality.diff_soln ? '已应用' : '未应用'}
+              <Tag color={latest.quality.diff_soln ? 'success' : 'default'}>
+                {latest.quality.diff_soln ? '已应用' : '未应用'}
               </Tag>
             </Space>
           </Col>
           <Col span={12}>
             <Space>
               <Text type="secondary">定位类型:</Text>
-              <Tag>{gnssData.quality.fix_type}D</Tag>
+              <Tag>{latest.quality.fix_type}D</Tag>
             </Space>
           </Col>
           <Col span={12}>
             <Space>
               <Text type="secondary">载波解:</Text>
-              <Tag color={gnssData.quality.carr_soln === 2 ? 'success' : 'default'}>
-                {gnssData.quality.carr_soln}
+              <Tag color={latest.quality.carr_soln === 2 ? 'success' : 'default'}>
+                {latest.quality.carr_soln}
               </Tag>
             </Space>
           </Col>
@@ -253,13 +255,13 @@ const GNSSStatusPanel: React.FC = () => {
       <Card size="small" title="GPS时间" style={{ marginTop: 16 }}>
         <Space split="|">
           <Text>
-            <Text type="secondary">周数:</Text> {gnssData.time.week}
+            <Text type="secondary">周数:</Text> {latest.time.week}
           </Text>
           <Text>
-            <Text type="secondary">周内秒:</Text> {gnssData.time.tow.toFixed(1)}s
+            <Text type="secondary">周内秒:</Text> {latest.time.tow.toFixed(1)}s
           </Text>
           <Text>
-            <Text type="secondary">帧号:</Text> {gnssData.sequence}
+            <Text type="secondary">帧号:</Text> {latest.sequence}
           </Text>
         </Space>
       </Card>

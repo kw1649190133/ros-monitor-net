@@ -16,8 +16,16 @@ import { useSensorStore } from '../../stores/useSensorStore';
 const { Title, Text } = Typography;
 
 export const SystemStatus: React.FC = () => {
-  const { connection, performance } = useSystemStore();
-  const { camera, lidar, gnss } = useSensorStore();
+  const { connection, performance, robotConnections } = useSystemStore();
+  const { robotData, robotIds, activeRobotId } = useSensorStore();
+  
+  // 获取当前选中机器人的传感器数据
+  const robotState = activeRobotId ? robotData[activeRobotId] : null;
+  const camera = robotState?.camera ?? { left: null, right: null, status: { connected: false, lastUpdate: 0, frequency: 0, errorCount: 0 } };
+  const lidar  = robotState?.lidar  ?? { latest: null, status: { connected: false, lastUpdate: 0, frequency: 0, errorCount: 0 } };
+  const gnss   = robotState?.gnss   ?? { latest: null, history: [], status: { connected: false, lastUpdate: 0, frequency: 0, errorCount: 0 } };
+  
+  const activeRobotConn = activeRobotId ? robotConnections[activeRobotId] : null;
 
   // 添加调试信息
   console.log('SystemStatus rendered:', { connection, performance, camera, lidar, gnss });

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Typography, Space, Badge, Tooltip } from 'antd';
+import { Typography, Space, Badge, Tooltip, Select, Tag } from 'antd';
 import { 
   MenuFoldOutlined, 
   MenuUnfoldOutlined,
@@ -9,11 +9,13 @@ import {
   ClockCircleOutlined
 } from '@ant-design/icons';
 import { useSystemStore } from '../../stores/useSystemStore';
+import { useSensorStore } from '../../stores/useSensorStore';
 
 const { Title } = Typography;
 
 export const Header: React.FC = () => {
   const { connection, ui, toggleSidebar } = useSystemStore();
+  const { robotIds, activeRobotId, setActiveRobot } = useSensorStore();
 
   const getStatusColor = (connected: boolean) => 
     connected ? '#52c41a' : '#ff4d4f';
@@ -28,7 +30,7 @@ export const Header: React.FC = () => {
         top: 0,
         zIndex: 100,
         height: '64px',
-        padding: '0 24px',
+        padding: '0 16px',
         background: '#001529',
         display: 'flex',
         alignItems: 'center',
@@ -53,7 +55,29 @@ export const Header: React.FC = () => {
         </Title>
       </Space>
 
-      <Space size="large">
+      <Space size="middle">
+        {/* 机器人选择器 */}
+        {robotIds.length > 0 && (
+          <Select
+            value={activeRobotId}
+            onChange={(val) => setActiveRobot(val)}
+            style={{ minWidth: 160 }}
+            size="small"
+            placeholder="选择机器人"
+            options={[
+              { value: null, label: '全部机器人' },
+              ...robotIds.map(id => ({ value: id, label: id })),
+            ]}
+          />
+        )}
+
+        {/* 机器人在线数 */}
+        {robotIds.length > 0 && (
+          <Tag color="processing" style={{ margin: 0 }}>
+            {robotIds.length} 在线
+          </Tag>
+        )}
+
         {/* WebSocket连接状态 */}
         <Tooltip title={`WebSocket: ${getStatusText(connection.websocket)}`}>
           <Badge 
@@ -74,16 +98,6 @@ export const Header: React.FC = () => {
           </Badge>
         </Tooltip>
 
-        {/* ROS连接状态 */}
-        <Tooltip title={`ROS: ${getStatusText(connection.ros)}`}>
-          <Badge 
-            color={getStatusColor(connection.ros)}
-            dot
-          >
-            <RobotOutlined style={{ color: 'white', fontSize: '16px' }} />
-          </Badge>
-        </Tooltip>
-
         {/* 延迟显示 */}
         <Tooltip title={`延迟: ${connection.latency}ms`}>
           <Space style={{ color: 'white' }}>
@@ -95,4 +109,3 @@ export const Header: React.FC = () => {
     </div>
   );
 };
-

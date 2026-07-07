@@ -1,4 +1,5 @@
 import { useSystemStore } from '../stores/useSystemStore';
+import { useSensorStore } from '../stores/useSensorStore';
 import { config } from '../utils/constants';
 
 export interface APIHealthResponse {
@@ -7,6 +8,13 @@ export interface APIHealthResponse {
   ros_ready: boolean;
   timestamp: number;
   websocket_clients: number;
+  robot_connections?: number;
+}
+
+export interface RobotListResponse {
+  success: boolean;
+  robots: Array<{ robot_id: string; hostname: string; ip: string; last_seen: number }>;
+  count: number;
 }
 
 export interface SystemStatusResponse {
@@ -120,32 +128,61 @@ class APIService {
     const systemStore = useSystemStore.getState();
     
     try {
-      // 检查API健康状态
       const healthResponse = await this.checkHealth();
       
       if (healthResponse && healthResponse.success) {
-        // API连接正常
         systemStore.updateConnectionStatus('api', true);
         
-        // 检查ROS状态
         const rosReady = healthResponse.ros_ready;
         systemStore.updateConnectionStatus('ros', rosReady);
         
-        console.log('✅ API健康检查成功:', {
-          api: true,
-          ros: rosReady,
-          websocket_clients: healthResponse.websocket_clients
+        console.log('API健康检查成功:', {
+          api: true, ros: rosReady,
+          websocket_clients: healthResponse.websocket_clients,
+          robot_connections: healthResponse.robot_connections,
         });
       } else {
-        // API连接失败
         systemStore.updateConnectionStatus('api', false);
         systemStore.updateConnectionStatus('ros', false);
-        console.log('❌ API健康检查失败');
       }
     } catch (error) {
       console.error('健康检查执行失败:', error);
       systemStore.updateConnectionStatus('api', false);
       systemStore.updateConnectionStatus('ros', false);
+    }
+  }
+
+  /**
+   * 获取在线机器人列表
+   */
+  async getRobotList(): Promise<RobotListResponse | null> {
+    try {
+      const response = await fetch(`${this.baseURL}/api/v1/robots`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(5000),
+      });
+      if (response.ok) return await response.json();
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * 向指定机器人下发指令
+   */
+  async sendCommand(robotId: string, command: Record<string, any>): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.baseURL}/api/v1/robot/${robotId}/command`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(command),
+        signal: AbortSignal.timeout(5000),
+      });
+      return response.ok;
+    } catch {
+      return false;
     }
   }
 

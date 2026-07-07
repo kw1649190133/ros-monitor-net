@@ -77,3 +77,19 @@ export const CHART_COLORS = {
   W_AXIS: '#722ed1',
 } as const;
 
+// 机器人颜色映射（8 个预设颜色，为 SLAM 3D 多轨迹同屏用）
+export const ROBOT_COLORS: readonly string[] = [
+  '#00d2ff', // 青色
+  '#ff6b6b', // 红色
+  '#4caf50', // 绿色
+  '#ffd700', // 金色
+  '#a78bfa', // 紫色
+  '#f97316', // 橙色
+  '#fb7185', // 粉色
+  '#38bdf8', // 蓝色
+];
+
+export function getRobotColor(index: number): string {
+  return ROBOT_COLORS[index % ROBOT_COLORS.length];
+}
+

@@ -2,9 +2,10 @@ import { create } from 'zustand';
 import type { ConnectionInfo } from '../types/api';
 
 interface SystemStore {
-  // 连接状态
+  // 连接状态（全局 + 按机器人）
   connection: ConnectionInfo;
-  
+  robotConnections: Record<string, ConnectionInfo>;
+
   // 性能指标
   performance: {
     wsLatency: number;
@@ -12,96 +13,92 @@ interface SystemStore {
     errorCount: number;
     uptime: number;
   };
-  
-  // UI状态
+
+  // UI 状态
   ui: {
     sidebarCollapsed: boolean;
     theme: 'light' | 'dark';
     currentPage: string;
   };
-  
-  // Actions
+
+  // Actions — 全局连接
   updateConnectionStatus: (type: keyof ConnectionInfo, status: boolean) => void;
   updateLatency: (latency: number) => void;
   updatePerformanceMetrics: (metrics: Partial<SystemStore['performance']>) => void;
+
+  // Actions — 按机器人连接
+  updateRobotConnection: (robotId: string, type: keyof ConnectionInfo, status: boolean) => void;
+
+  // UI Actions
   toggleSidebar: () => void;
   setCurrentPage: (page: string) => void;
   incrementErrorCount: () => void;
   resetErrorCount: () => void;
 }
 
+const defaultConnection: ConnectionInfo = {
+  websocket: false,
+  api: false,
+  ros: false,
+  latency: 0,
+};
+
 export const useSystemStore = create<SystemStore>((set) => ({
-  connection: {
-    websocket: false,
-    api: false,
-    ros: false,
-    latency: 0,
-  },
-  
+  connection: { ...defaultConnection },
+
+  robotConnections: {},
+
   performance: {
     wsLatency: 0,
     dataRate: 0,
     errorCount: 0,
     uptime: 0,
   },
-  
+
   ui: {
     sidebarCollapsed: false,
     theme: 'dark',
     currentPage: 'dashboard',
   },
-  
+
+  // 全局连接（浏览器 WS + API 状态）
   updateConnectionStatus: (type: keyof ConnectionInfo, status: boolean) => set((state) => ({
-    connection: {
-      ...state.connection,
-      [type]: status,
-    },
+    connection: { ...state.connection, [type]: status },
   })),
-  
+
   updateLatency: (latency: number) => set((state) => ({
-    connection: {
-      ...state.connection,
-      latency,
-    },
-    performance: {
-      ...state.performance,
-      wsLatency: latency,
-    },
+    connection: { ...state.connection, latency },
+    performance: { ...state.performance, wsLatency: latency },
   })),
-  
+
   updatePerformanceMetrics: (metrics: Partial<SystemStore['performance']>) => set((state) => ({
-    performance: {
-      ...state.performance,
-      ...metrics,
-    },
+    performance: { ...state.performance, ...metrics },
   })),
-  
+
+  // 按机器人连接状态
+  updateRobotConnection: (robotId: string, type: keyof ConnectionInfo, status: boolean) => set((state) => {
+    const current = state.robotConnections[robotId] || { ...defaultConnection };
+    return {
+      robotConnections: {
+        ...state.robotConnections,
+        [robotId]: { ...current, [type]: status },
+      },
+    };
+  }),
+
   toggleSidebar: () => set((state) => ({
-    ui: {
-      ...state.ui,
-      sidebarCollapsed: !state.ui.sidebarCollapsed,
-    },
+    ui: { ...state.ui, sidebarCollapsed: !state.ui.sidebarCollapsed },
   })),
-  
+
   setCurrentPage: (page: string) => set((state) => ({
-    ui: {
-      ...state.ui,
-      currentPage: page,
-    },
+    ui: { ...state.ui, currentPage: page },
   })),
-  
+
   incrementErrorCount: () => set((state) => ({
-    performance: {
-      ...state.performance,
-      errorCount: state.performance.errorCount + 1,
-    },
+    performance: { ...state.performance, errorCount: state.performance.errorCount + 1 },
   })),
-  
+
   resetErrorCount: () => set((state) => ({
-    performance: {
-      ...state.performance,
-      errorCount: 0,
-    },
+    performance: { ...state.performance, errorCount: 0 },
   })),
 }));
-

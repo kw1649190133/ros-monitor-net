@@ -91,6 +91,9 @@ export class WebSocketService {
   private handleMessage(message: WSMessage | any): void {
     const { type, data } = message;
     
+    // 提取机器人 ID（后端广播消息带 robot_id）
+    const robotId: string = message.robot_id || '_direct';
+    
     switch (type) {
       case 'connected':
         console.log('WebSocket authentication successful');
@@ -98,44 +101,44 @@ export class WebSocketService {
         
       case 'subscribed':
       case 'subscription_confirmed':
-        // 后端可能返回两种类型
         const topics = message.topics || (data && data.topics) || [];
-        console.log('✅ 话题订阅成功:', topics);
-        if (message.message) {
-          console.log('📝', message.message);
-        }
+        console.log('话题订阅成功:', topics);
         break;
       
       case 'unsubscribed':
-        const unsubTopics = message.topics || (data && data.topics) || [];
-        console.log('❌ 取消订阅:', unsubTopics);
-        if (message.message) {
-          console.log('📝', message.message);
-        }
+        console.log('取消订阅:', message.topics || []);
+        break;
+
+      case 'robot_list_updated':
+        this.handleRobotListUpdated(message);
+        break;
+
+      case 'robot_command_sent':
+        console.log(`指令已下发到 [${message.robot_id}]:`, message.command);
         break;
         
       case 'camera':
-        this.handleCameraData(data || message);
+        this.handleCameraData(robotId, data || message);
         break;
         
       case 'lidar':
-        this.handleLidarData(data || message);
+        this.handleLidarData(robotId, data || message);
         break;
       
       case 'gnss':
-        this.handleGNSSData(data || message);
+        this.handleGNSSData(robotId, data || message);
         break;
 
       case 'slam_path':
-        this.handlePathData(data || message);
+        this.handlePathData(robotId, data || message);
         break;
 
       case 'slam_odometry':
-        this.handleOdometryData(data || message);
+        this.handleOdometryData(robotId, data || message);
         break;
 
       case 'slam_cloud':
-        this.handleRegisteredCloudData(data || message);
+        this.handleRegisteredCloudData(robotId, data || message);
         break;
 
       case 'system_status':
@@ -147,20 +150,29 @@ export class WebSocketService {
         break;
 
       case 'error':
-        console.error('❌ 服务器错误:', message.message || data);
+        console.error('服务器错误:', message.message || data);
         break;
 
       default:
-        console.warn('⚠️  未知消息类型:', type, message);
+        console.warn('未知消息类型:', type, message);
     }
   }
   
 
   
-  private handleCameraData(data: any): void {
+  private handleRobotListUpdated(message: any): void {
+    const robots: string[] = message.robots || [];
+    console.log('在线机器人列表更新:', robots);
+    useSensorStore.getState().setRobotList(robots);
+    // 同步更新 system store
+    const systemStore = useSystemStore.getState();
+    robots.forEach((rid: string) => systemStore.updateRobotConnection(rid, 'ros', true));
+  }
+
+  private handleCameraData(robotId: string, data: any): void {
     const sensorStore = useSensorStore.getState();
     if (data.camera_id) {
-      sensorStore.updateCameraData(data.camera_id, {
+      sensorStore.updateCameraData(robotId, data.camera_id, {
         camera_id: data.camera_id,
         timestamp: data.timestamp,
         sequence: data.sequence || 0,
@@ -173,9 +185,9 @@ export class WebSocketService {
     }
   }
   
-  private handleLidarData(data: any): void {
+  private handleLidarData(robotId: string, data: any): void {
     const sensorStore = useSensorStore.getState();
-    sensorStore.updateLidarData({
+    sensorStore.updateLidarData(robotId, {
       timestamp: data.timestamp,
       frame_id: data.frame_id || 'map',
       point_count: data.point_count,
@@ -191,9 +203,9 @@ export class WebSocketService {
     });
   }
   
-  private handleGNSSData(data: any): void {
+  private handleGNSSData(robotId: string, data: any): void {
     const sensorStore = useSensorStore.getState();
-    sensorStore.updateGNSSData({
+    sensorStore.updateGNSSData(robotId, {
       rtk_status: data.rtk_status,
       quality: data.quality,
       position: data.position,
@@ -205,9 +217,9 @@ export class WebSocketService {
     });
   }
 
-  private handlePathData(data: any): void {
+  private handlePathData(robotId: string, data: any): void {
     const sensorStore = useSensorStore.getState();
-    sensorStore.updatePathData({
+    sensorStore.updatePathData(robotId, {
       topic: data.topic,
       timestamp: data.timestamp,
       frame_id: data.frame_id,
@@ -218,9 +230,9 @@ export class WebSocketService {
     });
   }
 
-  private handleOdometryData(data: any): void {
+  private handleOdometryData(robotId: string, data: any): void {
     const sensorStore = useSensorStore.getState();
-    sensorStore.updateOdometryData({
+    sensorStore.updateOdometryData(robotId, {
       topic: data.topic,
       timestamp: data.timestamp,
       frame_id: data.frame_id,
@@ -231,9 +243,9 @@ export class WebSocketService {
     });
   }
 
-  private handleRegisteredCloudData(data: any): void {
+  private handleRegisteredCloudData(robotId: string, data: any): void {
     const sensorStore = useSensorStore.getState();
-    sensorStore.updateRegisteredCloudData({
+    sensorStore.updateRegisteredCloudData(robotId, {
       topic: data.topic,
       timestamp: data.timestamp,
       frame_id: data.frame_id,

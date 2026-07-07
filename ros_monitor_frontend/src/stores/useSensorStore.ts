@@ -3,50 +3,32 @@ import type { CameraData, LidarData, SensorStatus, PathData, OdometryData, Regis
 import type { GNSSData } from '../types/gnss';
 
 
-interface SensorStore {
-  // 相机数据
+// ---- 单机器人传感器状态 ----
+
+export interface RobotSensorState {
   camera: {
     left: CameraData | null;
     right: CameraData | null;
     status: SensorStatus;
   };
-
-  // 激光雷达数据
   lidar: {
     latest: LidarData | null;
     status: SensorStatus;
   };
-
-  // GNSS数据
   gnss: {
     latest: GNSSData | null;
     history: GNSSData[];
     status: SensorStatus;
   };
-
-  // SLAM数据
   slam: {
     path: PathData | null;
     odometry: OdometryData | null;
     registeredCloud: RegisteredCloudData | null;
-    pathHistory: PathData[];  // 保存历史轨迹用于绘制
-    cloudHistory: RegisteredCloudData[];  // 累积点云历史用于地图显示
-    decayTime: number;  // 点云衰减时间(秒)
+    pathHistory: PathData[];
+    cloudHistory: RegisteredCloudData[];
+    decayTime: number;
     status: SensorStatus;
   };
-
-  // Actions
-  updateCameraData: (camera: 'left' | 'right', data: CameraData) => void;
-  updateLidarData: (data: LidarData) => void;
-  updateGNSSData: (data: GNSSData) => void;
-  updatePathData: (data: PathData) => void;
-  updateOdometryData: (data: OdometryData) => void;
-  updateRegisteredCloudData: (data: RegisteredCloudData) => void;
-  setDecayTime: (decayTime: number) => void;
-  updateSensorStatus: (sensor: 'camera' | 'lidar' | 'gnss' | 'slam', status: Partial<SensorStatus>) => void;
-  clearGNSSData: () => void;
-  clearSLAMData: () => void;
-  clearAllData: () => void;
 }
 
 const initialSensorStatus: SensorStatus = {
@@ -56,218 +38,189 @@ const initialSensorStatus: SensorStatus = {
   errorCount: 0,
 };
 
-export const useSensorStore = create<SensorStore>((set) => ({
-  camera: {
-    left: null,
-    right: null,
-    status: { ...initialSensorStatus },
-  },
-  
-  lidar: {
-    latest: null,
-    status: { ...initialSensorStatus },
-  },
-  
-  gnss: {
-    latest: null,
-    history: [],
-    status: { ...initialSensorStatus },
-  },
-
-  slam: {
-    path: null,
-    odometry: null,
-    registeredCloud: null,
-    pathHistory: [],
-    cloudHistory: [],
-    decayTime: 180, // 默认180秒
-    status: { ...initialSensorStatus },
-  },
-
-  updateCameraData: (camera: 'left' | 'right', data: CameraData) => set((state) => ({
-    camera: {
-      ...state.camera,
-      [camera]: data,
-      status: {
-        connected: true,
-        lastUpdate: Date.now(),
-        frequency: state.camera.status.frequency,
-        errorCount: state.camera.status.errorCount,
-      },
-    },
-  })),
-  
-  updateLidarData: (data: LidarData) => set((state) => ({
-    lidar: {
-      latest: data,
-      status: {
-        connected: true,
-        lastUpdate: Date.now(),
-        frequency: state.lidar.status.frequency,
-        errorCount: state.lidar.status.errorCount,
-      },
-    },
-  })),
-  
-  updateGNSSData: (data: GNSSData) => set((state) => ({
-    gnss: {
-      latest: data,
-      history: [...state.gnss.history.slice(-99), data], // 保留最近100条
-      status: {
-        connected: true,
-        lastUpdate: Date.now(),
-        frequency: state.gnss.status.frequency,
-        errorCount: state.gnss.status.errorCount,
-      },
-    },
-  })),
-
-  updatePathData: (data: PathData) => set((state) => ({
+function createRobotState(): RobotSensorState {
+  return {
+    camera: { left: null, right: null, status: { ...initialSensorStatus } },
+    lidar: { latest: null, status: { ...initialSensorStatus } },
+    gnss: { latest: null, history: [], status: { ...initialSensorStatus } },
     slam: {
-      ...state.slam,
-      path: data,
-      status: {
-        connected: true,
-        lastUpdate: Date.now(),
-        frequency: state.slam.status.frequency,
-        errorCount: state.slam.status.errorCount,
-      },
+      path: null, odometry: null, registeredCloud: null,
+      pathHistory: [], cloudHistory: [],
+      decayTime: 180, status: { ...initialSensorStatus },
     },
-  })),
+  };
+}
 
-  updateOdometryData: (data: OdometryData) => set((state) => ({
-    slam: {
-      ...state.slam,
-      odometry: data,
-      status: {
-        connected: true,
-        lastUpdate: Date.now(),
-        frequency: state.slam.status.frequency,
-        errorCount: state.slam.status.errorCount,
-      },
-    },
-  })),
+function ensureRobot(state: SensorStore, robotId: string): RobotSensorState {
+  if (!state.robotData[robotId]) {
+    state.robotData[robotId] = createRobotState();
+  }
+  return state.robotData[robotId];
+}
 
-  updateRegisteredCloudData: (data: RegisteredCloudData) => set((state) => {
-    const now = Date.now() / 1000;
-    const decayTime = state.slam.decayTime;
 
-    // 过滤掉过期的点云,添加新点云
-    const filteredHistory = state.slam.cloudHistory.filter(
-      cloud => (now - cloud.timestamp) < decayTime
-    );
+// ---- Store ----
 
+interface SensorStore {
+  // 多机器人数据
+  robotData: Record<string, RobotSensorState>;
+  robotIds: string[];
+  activeRobotId: string | null;
+
+  // 机器人管理
+  setRobotList: (ids: string[]) => void;
+  setActiveRobot: (robotId: string | null) => void;
+  removeRobot: (robotId: string) => void;
+
+  // 数据更新（所有函数接受 robotId）
+  updateCameraData: (robotId: string, camera: 'left' | 'right', data: CameraData) => void;
+  updateLidarData: (robotId: string, data: LidarData) => void;
+  updateGNSSData: (robotId: string, data: GNSSData) => void;
+  updatePathData: (robotId: string, data: PathData) => void;
+  updateOdometryData: (robotId: string, data: OdometryData) => void;
+  updateRegisteredCloudData: (robotId: string, data: RegisteredCloudData) => void;
+  setDecayTime: (robotId: string, decayTime: number) => void;
+  updateSensorStatus: (robotId: string, sensor: 'camera' | 'lidar' | 'gnss' | 'slam', status: Partial<SensorStatus>) => void;
+
+  // 清理
+  clearGNSSData: (robotId: string) => void;
+  clearSLAMData: (robotId: string) => void;
+  clearAllData: () => void;
+}
+
+export const useSensorStore = create<SensorStore>((set, get) => ({
+  robotData: {},
+  robotIds: [],
+  activeRobotId: null,
+
+  // ---- 机器人管理 ----
+
+  setRobotList: (ids: string[]) => set((state) => {
+    // 保留已有机器人数据，只更新列表
+    const existingIds = Object.keys(state.robotData);
+    const newIds = ids.filter(id => !existingIds.includes(id));
+    
+    // 为新机器人创建初始状态
+    for (const id of newIds) {
+      if (!state.robotData[id]) {
+        state.robotData[id] = createRobotState();
+      }
+    }
+    
     return {
-      slam: {
-        ...state.slam,
-        registeredCloud: data,
-        cloudHistory: [...filteredHistory, data],
-        status: {
-          connected: true,
-          lastUpdate: Date.now(),
-          frequency: state.slam.status.frequency,
-          errorCount: state.slam.status.errorCount,
-        },
-      },
+      robotIds: ids,
+      // 如果当前选中的机器人不在线，自动选第一个
+      activeRobotId: state.activeRobotId && ids.includes(state.activeRobotId)
+        ? state.activeRobotId
+        : ids[0] || null,
     };
   }),
 
-  setDecayTime: (decayTime: number) => set((state) => ({
-    slam: {
-      ...state.slam,
-      decayTime: decayTime,
-    },
-  })),
-
-  updateSensorStatus: (sensor: 'camera' | 'lidar' | 'gnss' | 'slam', status: Partial<SensorStatus>) => set((state) => {
-    if (sensor === 'camera') {
-      return {
-        camera: {
-          ...state.camera,
-          status: {
-            ...state.camera.status,
-            ...status,
-          },
-        },
-      };
-    } else if (sensor === 'lidar') {
-      return {
-        lidar: {
-          ...state.lidar,
-          status: {
-            ...state.lidar.status,
-            ...status,
-          },
-        },
-      };
-    } else if (sensor === 'gnss') {
-      return {
-        gnss: {
-          ...state.gnss,
-          status: {
-            ...state.gnss.status,
-            ...status,
-          },
-        },
-      };
-    } else if (sensor === 'slam') {
-      return {
-        slam: {
-          ...state.slam,
-          status: {
-            ...state.slam.status,
-            ...status,
-          },
-        },
-      };
-    }
-    return state;
+  setActiveRobot: (robotId: string | null) => set({ activeRobotId: robotId }),
+  
+  removeRobot: (robotId: string) => set((state) => {
+    const newData = { ...state.robotData };
+    delete newData[robotId];
+    const newIds = state.robotIds.filter(id => id !== robotId);
+    return {
+      robotData: newData,
+      robotIds: newIds,
+      activeRobotId: state.activeRobotId === robotId ? (newIds[0] || null) : state.activeRobotId,
+    };
   }),
 
-  clearGNSSData: () => set(() => ({
-    gnss: {
-      latest: null,
-      history: [],
-      status: { ...initialSensorStatus },
-    },
-  })),
+  // ---- 数据更新 ----
 
-  clearSLAMData: () => set((state) => ({
-    slam: {
-      path: null,
-      odometry: null,
-      registeredCloud: null,
-      pathHistory: [],
-      cloudHistory: [],
-      decayTime: state.slam.decayTime, // 保留decayTime设置
-      status: { ...initialSensorStatus },
-    },
-  })),
+  updateCameraData: (robotId: string, camera: 'left' | 'right', data: CameraData) =>
+    set((state) => {
+      const robot = ensureRobot(state, robotId);
+      robot.camera[camera] = data;
+      robot.camera.status = { ...robot.camera.status, connected: true, lastUpdate: Date.now() };
+      return { robotData: { ...state.robotData, [robotId]: robot } };
+    }),
 
-  clearAllData: () => set((state) => ({
-    camera: {
-      left: null,
-      right: null,
-      status: { ...initialSensorStatus },
-    },
-    lidar: {
-      latest: null,
-      status: { ...initialSensorStatus },
-    },
-    gnss: {
-      latest: null,
-      history: [],
-      status: { ...initialSensorStatus },
-    },
-    slam: {
-      path: null,
-      odometry: null,
-      registeredCloud: null,
-      pathHistory: [],
-      cloudHistory: [],
-      decayTime: state.slam.decayTime, // 保留decayTime设置
-      status: { ...initialSensorStatus },
-    },
-  })),
+  updateLidarData: (robotId: string, data: LidarData) =>
+    set((state) => {
+      const robot = ensureRobot(state, robotId);
+      robot.lidar.latest = data;
+      robot.lidar.status = { ...robot.lidar.status, connected: true, lastUpdate: Date.now() };
+      return { robotData: { ...state.robotData, [robotId]: robot } };
+    }),
+
+  updateGNSSData: (robotId: string, data: GNSSData) =>
+    set((state) => {
+      const robot = ensureRobot(state, robotId);
+      robot.gnss.latest = data;
+      robot.gnss.history = [...robot.gnss.history.slice(-99), data];
+      robot.gnss.status = { ...robot.gnss.status, connected: true, lastUpdate: Date.now() };
+      return { robotData: { ...state.robotData, [robotId]: robot } };
+    }),
+
+  updatePathData: (robotId: string, data: PathData) =>
+    set((state) => {
+      const robot = ensureRobot(state, robotId);
+      robot.slam.path = data;
+      robot.slam.pathHistory = [...robot.slam.pathHistory.slice(-49), data];
+      robot.slam.status = { ...robot.slam.status, connected: true, lastUpdate: Date.now() };
+      return { robotData: { ...state.robotData, [robotId]: robot } };
+    }),
+
+  updateOdometryData: (robotId: string, data: OdometryData) =>
+    set((state) => {
+      const robot = ensureRobot(state, robotId);
+      robot.slam.odometry = data;
+      robot.slam.status = { ...robot.slam.status, connected: true, lastUpdate: Date.now() };
+      return { robotData: { ...state.robotData, [robotId]: robot } };
+    }),
+
+  updateRegisteredCloudData: (robotId: string, data: RegisteredCloudData) =>
+    set((state) => {
+      const robot = ensureRobot(state, robotId);
+      const now = Date.now() / 1000;
+      const decayTime = robot.slam.decayTime;
+      const filteredHistory = robot.slam.cloudHistory.filter(
+        cloud => (now - cloud.timestamp) < decayTime
+      );
+      robot.slam.registeredCloud = data;
+      robot.slam.cloudHistory = [...filteredHistory, data];
+      robot.slam.status = { ...robot.slam.status, connected: true, lastUpdate: Date.now() };
+      return { robotData: { ...state.robotData, [robotId]: robot } };
+    }),
+
+  setDecayTime: (robotId: string, decayTime: number) =>
+    set((state) => {
+      const robot = ensureRobot(state, robotId);
+      robot.slam.decayTime = decayTime;
+      return { robotData: { ...state.robotData, [robotId]: robot } };
+    }),
+
+  updateSensorStatus: (robotId: string, sensor: 'camera' | 'lidar' | 'gnss' | 'slam', status: Partial<SensorStatus>) =>
+    set((state) => {
+      const robot = ensureRobot(state, robotId);
+      robot[sensor].status = { ...robot[sensor].status, ...status };
+      return { robotData: { ...state.robotData, [robotId]: robot } };
+    }),
+
+  // ---- 清理 ----
+
+  clearGNSSData: (robotId: string) =>
+    set((state) => {
+      const robot = ensureRobot(state, robotId);
+      robot.gnss = { latest: null, history: [], status: { ...initialSensorStatus } };
+      return { robotData: { ...state.robotData, [robotId]: robot } };
+    }),
+
+  clearSLAMData: (robotId: string) =>
+    set((state) => {
+      const robot = ensureRobot(state, robotId);
+      robot.slam = {
+        path: null, odometry: null, registeredCloud: null,
+        pathHistory: [], cloudHistory: [],
+        decayTime: robot.slam.decayTime,
+        status: { ...initialSensorStatus },
+      };
+      return { robotData: { ...state.robotData, [robotId]: robot } };
+    }),
+
+  clearAllData: () => set({ robotData: {}, robotIds: [], activeRobotId: null }),
 }));
-
