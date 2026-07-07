@@ -49,8 +49,8 @@ export const SLAMMonitor: React.FC = () => {
           </Text>
         </div>
         <Space>
-          <Tag color={slam?status.connected ? 'green' : 'red'}>
-            {slam?status.connected ? '已连接' : '未连接'}
+          <Tag color={slam?.status.connected ? 'green' : 'red'}>
+            {slam?.status.connected ? '已连接' : '未连接'}
           </Tag>
           <Tooltip title="清除数据">
             <Button icon={<ReloadOutlined />} onClick={clearSLAMData}>
@@ -66,7 +66,7 @@ export const SLAMMonitor: React.FC = () => {
           <Card size="small">
             <Statistic
               title="轨迹点数"
-              value={slam?path?.total_poses || 0}
+              value={slam?.path?.total_poses || 0}
               prefix={<EnvironmentOutlined />}
               suffix="个"
             />
@@ -76,7 +76,7 @@ export const SLAMMonitor: React.FC = () => {
           <Card size="small">
             <Statistic
               title="当前帧点云"
-              value={slam?registeredCloud?.sampled_points || 0}
+              value={slam?.registeredCloud?.sampled_points || 0}
               prefix={<CloudOutlined />}
               suffix="个"
             />
@@ -86,7 +86,7 @@ export const SLAMMonitor: React.FC = () => {
           <Card size="small">
             <Statistic
               title="累积点云帧数"
-              value={slam?cloudHistory?.length || 0}
+              value={slam?.cloudHistory?.length || 0}
               prefix={<CloudOutlined />}
               suffix="帧"
             />
@@ -96,7 +96,7 @@ export const SLAMMonitor: React.FC = () => {
           <Card size="small">
             <Statistic
               title="当前位置"
-              value={formatPosition(slam?odometry?.pose?.position)}
+              value={formatPosition(slam?.odometry?.pose?.position)}
               prefix={<AimOutlined />}
             />
           </Card>
@@ -112,7 +112,7 @@ export const SLAMMonitor: React.FC = () => {
             <InputNumber
               min={1}
               max={10000}
-              value={slam?decayTime}
+              value={slam?.decayTime}
               onChange={(value) => setDecayTime(value || 1000)}
               style={{ width: '100%' }}
               addonAfter="s"
@@ -131,7 +131,7 @@ export const SLAMMonitor: React.FC = () => {
         }
         extra={
           <Text type="secondary">
-            帧ID: {slam?odometry?.frame_id || '-'}
+            帧ID: {slam?.odometry?.frame_id || '-'}
           </Text>
         }
       >
@@ -176,14 +176,14 @@ export const SLAMMonitor: React.FC = () => {
               <Col span={12}>
                 <Text strong>位置:</Text>
                 <br />
-                <Text code>{formatPosition(slam?odometry?.pose?.position)}</Text>
+                <Text code>{formatPosition(slam?.odometry?.pose?.position)}</Text>
               </Col>
               <Col span={12}>
                 <Text strong>速度:</Text>
                 <br />
                 <Text code>
-                  {slam?odometry?.twist?.linear ? 
-                    `(${slam?odometry.twist.linear.x.toFixed(3)}, ${slam?odometry.twist.linear.y.toFixed(3)}, ${slam?odometry.twist.linear.z.toFixed(3)})` 
+                  {slam?.odometry?.twist?.linear ? 
+                    `(${slam?.odometry.twist.linear.x.toFixed(3)}, ${slam?.odometry.twist.linear.y.toFixed(3)}, ${slam?.odometry.twist.linear.z.toFixed(3)})` 
                     : '-'}
                 </Text>
               </Col>
@@ -194,18 +194,18 @@ export const SLAMMonitor: React.FC = () => {
           <Card title="帧信息" size="small">
             <Row>
               <Col span={12}>
-                <Text strong>Path帧数:</Text> {slam?path?.sequence || 0}
+                <Text strong>Path帧数:</Text> {slam?.path?.sequence || 0}
               </Col>
               <Col span={12}>
-                <Text strong>Odom帧数:</Text> {slam?odometry?.sequence || 0}
+                <Text strong>Odom帧数:</Text> {slam?.odometry?.sequence || 0}
               </Col>
             </Row>
             <Row style={{ marginTop: 8 }}>
               <Col span={12}>
-                <Text strong>Cloud帧数:</Text> {slam?registeredCloud?.sequence || 0}
+                <Text strong>Cloud帧数:</Text> {slam?.registeredCloud?.sequence || 0}
               </Col>
               <Col span={12}>
-                <Text strong>采样点:</Text> {slam?registeredCloud?.sampled_points || 0}/{slam?registeredCloud?.total_points || 0}
+                <Text strong>采样点:</Text> {slam?.registeredCloud?.sampled_points || 0}/{slam?.registeredCloud?.total_points || 0}
               </Col>
             </Row>
           </Card>
