@@ -6,6 +6,9 @@ interface SystemStore {
   connection: ConnectionInfo;
   robotConnections: Record<string, ConnectionInfo>;
 
+  // 流量监控（按机器人）
+  robotTraffic: Record<string, { total_kb: number; rate_kbps: number }>;
+
   // 性能指标
   performance: {
     wsLatency: number;
@@ -29,6 +32,9 @@ interface SystemStore {
   // Actions — 按机器人连接
   updateRobotConnection: (robotId: string, type: keyof ConnectionInfo, status: boolean) => void;
 
+  // Actions — 流量监控
+  updateRobotTraffic: (traffic: Record<string, { total_kb: number; rate_kbps: number }>) => void;
+
   // UI Actions
   toggleSidebar: () => void;
   setCurrentPage: (page: string) => void;
@@ -47,6 +53,8 @@ export const useSystemStore = create<SystemStore>((set) => ({
   connection: { ...defaultConnection },
 
   robotConnections: {},
+
+  robotTraffic: {},
 
   performance: {
     wsLatency: 0,
@@ -85,6 +93,8 @@ export const useSystemStore = create<SystemStore>((set) => ({
       },
     };
   }),
+
+  updateRobotTraffic: (traffic) => set({ robotTraffic: traffic }),
 
   toggleSidebar: () => set((state) => ({
     ui: { ...state.ui, sidebarCollapsed: !state.ui.sidebarCollapsed },

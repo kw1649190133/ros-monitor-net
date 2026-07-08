@@ -7,7 +7,8 @@ import {
   SettingOutlined,
   VideoCameraOutlined,
   AimOutlined,
-  NodeIndexOutlined
+  NodeIndexOutlined,
+  AppstoreOutlined,
 } from '@ant-design/icons';
 import { useSystemStore } from '../../stores/useSystemStore';
 
@@ -15,6 +16,11 @@ export const Sidebar: React.FC = () => {
   const { ui, setCurrentPage } = useSystemStore();
 
   const menuItems = [
+    {
+      key: 'overview',
+      icon: <AppstoreOutlined />,
+      label: '总体概况',
+    },
     {
       key: 'dashboard',
       icon: <DashboardOutlined />,

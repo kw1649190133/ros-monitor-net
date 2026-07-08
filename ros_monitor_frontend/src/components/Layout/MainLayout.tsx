@@ -4,6 +4,7 @@ import { Header } from './Header';
 import { Sidebar } from './Sidebar';
 import { SystemStatus } from '../Dashboard/SystemStatus';
 import { ConnectionStatus } from '../Dashboard/ConnectionStatus';
+import { OverviewPanel } from '../Dashboard/OverviewPanel';
 import CameraMonitor from '../CameraMonitor';
 import DataCollectionControl from '../Sensors/DataCollectionControl';
 import GNSSStatusPanel from '../Sensors/GNSSStatusPanel';
@@ -24,6 +25,15 @@ export const MainLayout: React.FC = () => {
         console.log('🔌 正在连接WebSocket...');
         await wsService.connect(config.API_HOST, config.API_PORT);
         console.log('✅ WebSocket全局连接成功');
+        
+        // 订阅所有传感器话题（多机模式下必须显式订阅才能接收广播数据）
+        wsService.subscribe(['camera', 'lidar', 'gnss', 'imu', 'slam']);
+        
+        // 请求系统状态
+        wsService.send({
+          type: 'request_system_status',
+          timestamp: new Date().toISOString(),
+        });
       } catch (error) {
         console.error('❌ WebSocket连接失败:', error);
       }
@@ -53,6 +63,8 @@ export const MainLayout: React.FC = () => {
 
   const renderContent = () => {
     switch (currentPage) {
+      case 'overview':
+        return <OverviewPanel />;
       case 'dashboard':
         return <SystemStatus />;
       case 'camera':

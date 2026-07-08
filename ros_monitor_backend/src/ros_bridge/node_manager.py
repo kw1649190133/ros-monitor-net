@@ -534,10 +534,13 @@ class ROSNodeManager:
         logger.info(f"订阅器设置完毕: {subscribed}/{len(self.subscribers)} 个活跃")
 
     def _update_data(self, topic: str, data: Dict[str, Any], robot_id: str = '_direct'):
-        """线程安全地更新最新数据。robot_id='_direct' 为 rosbridge 直连模式。"""
+        """线程安全地更新最新数据。robot_id='_direct' 为 rosbridge 直连模式。
+        注意：将 data['timestamp'] 统一覆盖为绝对时间戳，与前端 Date.now()/1000 对齐。"""
         with self._lock:
             if robot_id not in self.robot_data:
                 self.robot_data[robot_id] = {}
+            # 统一 data 里的 timestamp 为绝对时间戳，防止前端 cloudHistory 过滤失效
+            data['timestamp'] = time.time()
             self.robot_data[robot_id][topic] = {
                 'timestamp': time.time(),
                 'data': data,
@@ -579,8 +582,6 @@ class ROSNodeManager:
                         if isinstance(d, dict) and 'camera_id' in d and 'data' in d:
                             camera_data[d['camera_id']] = d
 
-        if not camera_data:
-            camera_data = await self._get_test_camera_data()
         return camera_data if camera_data else None
 
     async def get_latest_lidar_data(self, robot_id: str = None) -> Optional[Dict[str, Any]]:
@@ -588,32 +589,21 @@ class ROSNodeManager:
             entry = self._robot_topic(topic, robot_id)
             if entry and 'data' in entry:
                 return entry['data']
-        return {
-            'timestamp': time.time(),
-            'point_count': 100,
-            'data': [[0.0, 0.0, 0.0]] * 100,
-            'fields': [{'name': 'x'}, {'name': 'y'}, {'name': 'z'}],
-            'compression': 'none',
-        }
+        return None  # 无真实 LiDAR 数据时不返回假数据
 
     async def get_latest_imu_data(self, robot_id: str = None) -> Optional[Dict[str, Any]]:
         for topic in self.imu_topics:
             entry = self._robot_topic(topic, robot_id)
             if entry and 'data' in entry:
                 return entry['data']
-        return {
-            'timestamp': time.time(),
-            'orientation': {'x': 0.0, 'y': 0.0, 'z': 0.0, 'w': 1.0},
-            'angular_velocity': {'x': 0.0, 'y': 0.0, 'z': 0.0},
-            'linear_acceleration': {'x': 9.8, 'y': 0.0, 'z': 0.0},
-        }
+        return None  # 无真实 IMU 数据时不返回假数据
 
     async def get_latest_gnss_data(self, robot_id: str = None) -> Optional[Dict[str, Any]]:
         for cfg in self.gnss_topics:
             entry = self._robot_topic(cfg['topic'], robot_id)
             if entry and 'data' in entry:
                 return entry['data']
-        return await self._get_test_gnss_data()
+        return None  # 无真实 GNSS 数据时不返回测试假数据
 
     async def get_latest_slam_data(self, robot_id: str = None) -> Optional[Dict[str, Any]]:
         slam_data = {}

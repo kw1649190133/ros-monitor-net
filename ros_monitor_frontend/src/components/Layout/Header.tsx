@@ -50,33 +50,30 @@ export const Header: React.FC = () => {
         >
           {ui.sidebarCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
         </div>
-        <Title level={4} style={{ margin: 0, color: 'white' }}>
-          ROS远程监控系统
+        <Title level={4} style={{ margin: 0, color: '#00ff88' }}>
+          ROS远程监控系统 v2.0 (多机)
         </Title>
       </Space>
 
       <Space size="middle">
         {/* 机器人选择器 */}
-        {robotIds.length > 0 && (
-          <Select
-            value={activeRobotId}
-            onChange={(val) => setActiveRobot(val)}
-            style={{ minWidth: 160 }}
-            size="small"
-            placeholder="选择机器人"
-            options={[
-              { value: null, label: '全部机器人' },
-              ...robotIds.map(id => ({ value: id, label: id })),
-            ]}
-          />
-        )}
+        <Select
+          value={activeRobotId}
+          onChange={(val) => setActiveRobot(val)}
+          style={{ minWidth: 160 }}
+          size="small"
+          placeholder={robotIds.length > 0 ? "选择机器人" : "无在线机器人"}
+          disabled={robotIds.length === 0}
+          options={[
+            { value: null, label: '全部机器人' },
+            ...robotIds.map(id => ({ value: id, label: id })),
+          ]}
+        />
 
         {/* 机器人在线数 */}
-        {robotIds.length > 0 && (
-          <Tag color="processing" style={{ margin: 0 }}>
-            {robotIds.length} 在线
-          </Tag>
-        )}
+        <Tag color={robotIds.length > 0 ? "processing" : "default"} style={{ margin: 0 }}>
+          {robotIds.length} 在线
+        </Tag>
 
         {/* WebSocket连接状态 */}
         <Tooltip title={`WebSocket: ${getStatusText(connection.websocket)}`}>

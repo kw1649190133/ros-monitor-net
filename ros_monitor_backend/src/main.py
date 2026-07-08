@@ -6,6 +6,8 @@ from contextlib import asynccontextmanager
 import logging
 import time
 import os
+import json
+from collections import deque
 
 from src.websocket.connection_manager import ConnectionManager
 from src.ros_bridge.node_manager import ROSNodeManager
@@ -125,12 +127,23 @@ async def robot_websocket_endpoint(websocket: WebSocket, robot_id: str):
     global _robot_data_active
     
     await websocket.accept()
-    robot_connections[robot_id] = {'ws': websocket, 'last_seen': time.time()}
+    robot_connections[robot_id] = {
+        'ws': websocket, 'last_seen': time.time(),
+        'bytes_received': 0,
+        'bytes_history': deque(),      # (timestamp, bytes_received) — 用于5s滑动平均
+        'rate_kbps': 0.0, 'last_rate_update': 0,
+    }
     logger.info(f"机器人 [{robot_id}] 已连接 (当前在线: {len(robot_connections)}台)")
     
     try:
         while True:
             message = await websocket.receive_json()
+            # 追踪流量：估算消息字节数，记录采样点用于滑动平均
+            if robot_id in robot_connections:
+                msg_bytes = len(json.dumps(message))
+                conn = robot_connections[robot_id]
+                conn['bytes_received'] += msg_bytes
+                conn['bytes_history'].append((time.time(), conn['bytes_received']))
             await _handle_robot_message(robot_id, message)
     except WebSocketDisconnect:
         logger.info(f"机器人 [{robot_id}] 断开连接")
@@ -360,12 +373,12 @@ async def background_broadcast():
             if ros_manager and (has_any_data or _robot_data_active):
                 # 按机器人逐个广播
                 for rid in robot_ids:
-                    _broadcast_for_robot(rid)
+                    await _broadcast_for_robot(rid)
                 
         except Exception as e:
             logger.error(f"Background broadcast error: {e}")
         
-        await asyncio.sleep(0.1)  # 10Hz推送频率
+        await asyncio.sleep(0.5)  # 2Hz广播频率，降低带宽压力
 
 
 async def _broadcast_for_robot(robot_id: str):
@@ -416,15 +429,51 @@ async def _broadcast_for_robot(robot_id: str):
 
 
 async def _broadcast_robot_list():
-    """广播在线机器人列表给所有浏览器客户端。"""
+    """广播在线机器人列表给所有浏览器客户端，附带流量信息。"""
     if not ros_manager:
         return
     robot_ids = ros_manager.get_robot_list()
+    now = time.time()
+    
+    # 计算每台机器人的实时带宽（5秒滑动平均，1秒刷新一次）
+    traffic = {}
+    RATE_WINDOW = 5.0   # 5秒滑动窗口
+    RATE_INTERVAL = 1.0  # 最小刷新间隔
+    
+    for rid in list(robot_connections.keys()):
+        conn = robot_connections[rid]
+        total = conn.get('bytes_received', 0)
+        history = conn.get('bytes_history', deque())
+        
+        # 只在间隔超过 1 秒时重新计算速率
+        if now - conn.get('last_rate_update', 0) >= RATE_INTERVAL:
+            conn['last_rate_update'] = now
+            
+            # 清理 5 秒前的旧采样点，保留至少 2 个点
+            while len(history) > 2 and now - history[0][0] > RATE_WINDOW:
+                history.popleft()
+            
+            # 计算滑动平均速率
+            if len(history) >= 2:
+                dt = history[-1][0] - history[0][0]
+                db = history[-1][1] - history[0][1]
+                rate = db / dt if dt > 0 else 0
+            else:
+                rate = 0
+            
+            conn['rate_kbps'] = round(rate / 1024, 1)
+        
+        traffic[rid] = {
+            'total_kb': round(total / 1024, 1),
+            'rate_kbps': conn.get('rate_kbps', 0),
+        }
+    
     msg = {
         "type": "robot_list_updated",
         "robots": robot_ids,
         "count": len(robot_ids),
-        "timestamp": time.time(),
+        "traffic": traffic,
+        "timestamp": now,
     }
     await connection_manager.broadcast_to_all(msg)
 
@@ -466,7 +515,9 @@ async def list_robots():
         "success": True,
         "robots": [
             {"robot_id": rid, "hostname": info.get('hostname', '?'),
-             "ip": info.get('ip', '?'), "last_seen": info.get('last_seen', 0)}
+             "ip": info.get('ip', '?'), "last_seen": info.get('last_seen', 0),
+             "bytes_received": info.get('bytes_received', 0),
+             "bytes_rate": info.get('bytes_rate', 0)}
             for rid, info in robot_connections.items()
         ],
         "count": len(robot_connections),

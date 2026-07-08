@@ -167,6 +167,10 @@ export class WebSocketService {
     // 同步更新 system store
     const systemStore = useSystemStore.getState();
     robots.forEach((rid: string) => systemStore.updateRobotConnection(rid, 'ros', true));
+    // 更新流量信息
+    if (message.traffic) {
+      systemStore.updateRobotTraffic(message.traffic);
+    }
   }
 
   private handleCameraData(robotId: string, data: any): void {

@@ -1,12 +1,13 @@
-import React, { useEffect } from 'react';
-import { Card, Row, Col, Typography, Statistic, Tag, Space, Button, Tooltip, InputNumber } from 'antd';
+import React, { useEffect, useState } from 'react';
+import { Card, Row, Col, Typography, Statistic, Tag, Space, Button, Tooltip, InputNumber, Slider } from 'antd';
 import {
   AimOutlined,
   EnvironmentOutlined,
   NodeIndexOutlined,
   ReloadOutlined,
   CloudOutlined,
-  FieldTimeOutlined
+  FieldTimeOutlined,
+  SettingOutlined
 } from '@ant-design/icons';
 import { useSensorStore } from '../../stores/useSensorStore';
 import { wsService } from '../../services/websocket';
@@ -17,6 +18,10 @@ const { Title, Text } = Typography;
 export const SLAMMonitor: React.FC = () => {
   const { robotData, activeRobotId, clearSLAMData, setDecayTime } = useSensorStore();
   const slam = activeRobotId ? robotData[activeRobotId]?.slam : null;
+  
+  // 可手动调整的参数 —— 根据机器性能和网络带宽动态调整
+  const [maxCloudPoints, setMaxCloudPoints] = useState(10000);
+  const [maxCloudFrames, setMaxCloudFrames] = useState(20);
   
   // 订阅SLAM数据
   useEffect(() => {
@@ -29,10 +34,10 @@ export const SLAMMonitor: React.FC = () => {
     };
   }, []);
   
-  // 格式化位置数据
+  // 格式化位置数据 —— 固定长度防止负号导致换行
   const formatPosition = (pos: { x: number; y: number; z: number } | undefined) => {
     if (!pos) return '-';
-    return `(${pos.x.toFixed(3)}, ${pos.y.toFixed(3)}, ${pos.z.toFixed(3)})`;
+    return `(${pos.x.toFixed(2)}, ${pos.y.toFixed(2)}, ${pos.z.toFixed(2)})`;
   };
 
   return (
@@ -62,7 +67,7 @@ export const SLAMMonitor: React.FC = () => {
       
       {/* 状态统计卡片 */}
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col span={5}>
+        <Col span={4}>
           <Card size="small">
             <Statistic
               title="轨迹点数"
@@ -72,7 +77,7 @@ export const SLAMMonitor: React.FC = () => {
             />
           </Card>
         </Col>
-        <Col span={5}>
+        <Col span={4}>
           <Card size="small">
             <Statistic
               title="当前帧点云"
@@ -82,41 +87,57 @@ export const SLAMMonitor: React.FC = () => {
             />
           </Card>
         </Col>
-        <Col span={5}>
+        <Col span={4}>
           <Card size="small">
             <Statistic
-              title="累积点云帧数"
+              title="累积帧数"
               value={slam?.cloudHistory?.length || 0}
               prefix={<CloudOutlined />}
               suffix="帧"
             />
           </Card>
         </Col>
-        <Col span={5}>
+        <Col span={6}>
           <Card size="small">
             <Statistic
               title="当前位置"
               value={formatPosition(slam?.odometry?.pose?.position)}
               prefix={<AimOutlined />}
+              valueStyle={{ fontFamily: 'monospace', fontSize: '24px', whiteSpace: 'nowrap' }}
             />
           </Card>
         </Col>
-        <Col span={4}>
-          <Card size="small">
-            <div style={{ marginBottom: 8 }}>
-              <Text type="secondary">
-                <FieldTimeOutlined style={{ marginRight: 4 }} />
-                Decay Time (秒)
-              </Text>
-            </div>
-            <InputNumber
-              min={1}
-              max={10000}
-              value={slam?.decayTime}
-              onChange={(value) => setDecayTime(value || 1000)}
-              style={{ width: '100%' }}
-              addonAfter="s"
-            />
+        <Col span={6}>
+          <Card size="small" title={<span><SettingOutlined /> 渲染参数</span>}>
+            <Text type="secondary" style={{ fontSize: '11px', display: 'block', marginBottom: '8px' }}>
+              修改后自动生效，根据机器性能调整
+            </Text>
+            <Row gutter={[8, 8]}>
+              <Col span={12}>
+                <Text type="secondary" style={{ fontSize: '11px' }}>最大点数</Text>
+                <InputNumber
+                  size="small"
+                  min={500}
+                  max={500000}
+                  step={500}
+                  value={maxCloudPoints}
+                  onChange={v => setMaxCloudPoints(v || 3000)}
+                  style={{ width: '100%' }}
+                />
+              </Col>
+              <Col span={12}>
+                <Text type="secondary" style={{ fontSize: '11px' }}>最大帧数</Text>
+                <InputNumber
+                  size="small"
+                  min={1}
+                  max={200}
+                  step={1}
+                  value={maxCloudFrames}
+                  onChange={v => setMaxCloudFrames(v || 10)}
+                  style={{ width: '100%' }}
+                />
+              </Col>
+            </Row>
           </Card>
         </Col>
       </Row>
@@ -135,7 +156,11 @@ export const SLAMMonitor: React.FC = () => {
           </Text>
         }
       >
-        <SLAMViewer3D style={{ height: 600 }} />
+        <SLAMViewer3D
+          style={{ height: 600 }}
+          maxCloudPoints={maxCloudPoints}
+          maxCloudFrames={maxCloudFrames}
+        />
         
         {/* 图例 */}
         <div style={{ marginTop: 16, padding: '8px 16px', background: '#f5f5f5', borderRadius: 4 }}>
