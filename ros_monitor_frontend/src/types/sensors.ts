@@ -68,6 +68,7 @@ export interface OdometryData {
 export interface RegisteredCloudData {
   topic: string;
   timestamp: number;
+  _received_at?: number; // 服务器接收时间（绝对时间戳，用于 decay 过滤）
   frame_id: string;
   sequence: number;
   total_points: number;

@@ -217,6 +217,7 @@ export class WebSocketService {
     useSensorStore.getState().updateRegisteredCloudData(robotId, {
       topic: d.topic,
       timestamp: d.timestamp,
+      _received_at: d._received_at,
       frame_id: d.frame_id,
       sequence: d.sequence,
       total_points: d.total_points,
