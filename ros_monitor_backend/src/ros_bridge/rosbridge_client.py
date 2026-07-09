@@ -5,7 +5,6 @@ Rosbridge WebSocket 客户端
 
 import asyncio
 import logging
-import threading
 import time
 import roslibpy
 from typing import Callable, Dict, Any, Optional
@@ -21,8 +20,8 @@ class RosbridgeClient:
         self.port = port
         self.ros: Optional[roslibpy.Ros] = None
         self._topics: Dict[str, roslibpy.Topic] = {}
-        self._lock = threading.Lock()
-        self._connected = threading.Event()
+        self._lock = asyncio.Lock()
+        self._connected = asyncio.Event()
 
     async def connect(self, timeout: float = 10.0) -> None:
         """连接到 rosbridge_server，异步等待连接就绪。"""
@@ -46,40 +45,33 @@ class RosbridgeClient:
 
         self.ros.run()  # 后台线程启动 WebSocket 连接
 
-        # 等待连接就绪
-        start = time.time()
-        while not self._connected.is_set():
-            if time.time() - start > timeout:
-                self.ros.terminate()
-                self.ros = None
-                raise ConnectionError(
-                    f"连接 rosbridge ws://{self.host}:{self.port} 超时 ({timeout}s)。"
-                    f"请确认机器人端已运行: roslaunch rosbridge_server rosbridge_websocket.launch"
-                )
-            await asyncio.sleep(0.1)
+        # 异步等待连接就绪（使用 asyncio.Event 替代 busy-wait）
+        try:
+            await asyncio.wait_for(self._connected.wait(), timeout=timeout)
+        except asyncio.TimeoutError:
+            self.ros.terminate()
+            self.ros = None
+            raise ConnectionError(
+                f"连接 rosbridge ws://{self.host}:{self.port} 超时 ({timeout}s)。"
+                f"请确认机器人端已运行: roslaunch rosbridge_server rosbridge_websocket.launch"
+            )
 
-        logger.info(f"rosbridge 连接就绪，耗时 {time.time() - start:.1f}s")
+        logger.info(f"rosbridge 连接就绪")
 
-    def subscribe(self, topic: str, msg_type: str, callback: Callable[[dict], None]) -> None:
-        """订阅一个 ROS topic。
-
-        Args:
-            topic: ROS topic 名称（如 /livox/lidar）
-            msg_type: 消息类型（如 sensor_msgs/PointCloud2）
-            callback: 收到消息时的回调，参数为 JSON dict
-        """
+    async def subscribe(self, topic: str, msg_type: str, callback: Callable[[dict], None]) -> None:
+        """订阅一个 ROS topic。"""
         if self.ros is None:
             raise RuntimeError("rosbridge 未连接，请先调用 connect()")
 
         listener = roslibpy.Topic(self.ros, topic, msg_type)
         listener.subscribe(callback)
-        with self._lock:
+        async with self._lock:
             self._topics[topic] = listener
         logger.info(f"通过 rosbridge 订阅: {topic} ({msg_type})")
 
-    def unsubscribe(self, topic: str) -> None:
+    async def unsubscribe(self, topic: str) -> None:
         """取消订阅某个 topic。"""
-        with self._lock:
+        async with self._lock:
             if topic in self._topics:
                 self._topics[topic].unsubscribe()
                 del self._topics[topic]
@@ -90,14 +82,14 @@ class RosbridgeClient:
         """rosbridge 是否已连接。"""
         return self.ros is not None and self.ros.is_connected
 
-    def get_subscribed_topics(self) -> list:
+    async def get_subscribed_topics(self) -> list:
         """返回当前已订阅的 topic 列表。"""
-        with self._lock:
+        async with self._lock:
             return list(self._topics.keys())
 
-    def close(self) -> None:
+    async def close(self) -> None:
         """关闭 rosbridge 连接，取消所有订阅。"""
-        with self._lock:
+        async with self._lock:
             for topic in list(self._topics.keys()):
                 try:
                     self._topics[topic].unsubscribe()

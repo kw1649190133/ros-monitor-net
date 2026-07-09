@@ -8,6 +8,7 @@ import logging
 import time
 import os
 import threading
+from functools import partial
 from typing import Dict, Any, Optional
 
 from src.ros_bridge.rosbridge_client import RosbridgeClient
@@ -438,8 +439,7 @@ class ROSNodeManager:
         for topic in self.camera_topics:
             camera_id = camera_config.get_camera_id_by_topic(topic)
             handler = _CameraHandler(topic, camera_id, self.image_params)
-            def _cam_cb(data, t=topic):
-                handler(self._update_data, t, data)
+            _cam_cb = partial(handler, self._update_data, topic)
             try:
                 self.rosbridge.subscribe(topic, 'sensor_msgs/CompressedImage', _cam_cb)
                 self.subscribers[topic] = handler
@@ -450,8 +450,7 @@ class ROSNodeManager:
 
         # --- 激光雷达 ---
         for topic in self.lidar_topics:
-            def _lidar_cb(data, t=topic):
-                _handle_lidar(self._update_data, t, data)
+            _lidar_cb = partial(_handle_lidar, self._update_data, topic)
             try:
                 self.rosbridge.subscribe(topic, 'sensor_msgs/PointCloud2', _lidar_cb)
                 self.subscribers[topic] = {'topic': topic, 'type': 'lidar', 'active': True}
@@ -462,8 +461,7 @@ class ROSNodeManager:
 
         # --- IMU ---
         for topic in self.imu_topics:
-            def _imu_cb(data, t=topic):
-                _handle_imu(self._update_data, t, data)
+            _imu_cb = partial(_handle_imu, self._update_data, topic)
             try:
                 self.rosbridge.subscribe(topic, 'sensor_msgs/Imu', _imu_cb)
                 self.subscribers[topic] = {'topic': topic, 'type': 'imu', 'active': True}
@@ -479,12 +477,10 @@ class ROSNodeManager:
             msg_type = cfg['type']
             try:
                 if msg_type == 'GnssPVTSolnMsg':
-                    def _gnss_cb(data, t=topic):
-                        _handle_gnss_pvt(self._update_data, t, data)
+                    _gnss_cb = partial(_handle_gnss_pvt, self._update_data, topic)
                     self.rosbridge.subscribe(topic, 'gnss_comm/GnssPVTSolnMsg', _gnss_cb)
                 else:
-                    def _navsat_cb(data, t=topic):
-                        _handle_navsatfix(self._update_data, t, data)
+                    _navsat_cb = partial(_handle_navsatfix, self._update_data, topic)
                     self.rosbridge.subscribe(topic, 'sensor_msgs/NavSatFix', _navsat_cb)
                 self.subscribers[topic] = {'topic': topic, 'type': 'gnss', 'active': True}
                 subscribed += 1
@@ -501,8 +497,8 @@ class ROSNodeManager:
         # --- SLAM ---
         # Path
         path_topic = self.slam_topics['path']
-        def _path_cb(data, t=path_topic):
-            _handle_path(self._update_data, t, data)
+        def _path_cb(data):
+            _handle_path(self._update_data, path_topic, data)
         try:
             self.rosbridge.subscribe(path_topic, 'nav_msgs/Path', _path_cb)
             self.subscribers[path_topic] = {'topic': path_topic, 'type': 'path', 'active': True}
@@ -513,8 +509,8 @@ class ROSNodeManager:
 
         # Odometry
         odom_topic = self.slam_topics['odometry']
-        def _odom_cb(data, t=odom_topic):
-            _handle_odometry(self._update_data, t, data)
+        def _odom_cb(data):
+            _handle_odometry(self._update_data, odom_topic, data)
         try:
             self.rosbridge.subscribe(odom_topic, 'nav_msgs/Odometry', _odom_cb)
             self.subscribers[odom_topic] = {'topic': odom_topic, 'type': 'odometry', 'active': True}
@@ -525,8 +521,8 @@ class ROSNodeManager:
 
         # Registered Cloud
         cloud_topic = self.slam_topics['registered_cloud']
-        def _cloud_cb(data, t=cloud_topic):
-            _handle_registered_cloud(self._update_data, t, data)
+        def _cloud_cb(data):
+            _handle_registered_cloud(self._update_data, cloud_topic, data)
         try:
             self.rosbridge.subscribe(cloud_topic, 'sensor_msgs/PointCloud2', _cloud_cb)
             self.subscribers[cloud_topic] = {'topic': cloud_topic, 'type': 'cloud', 'active': True}
@@ -674,73 +670,3 @@ class ROSNodeManager:
 
     # ------------------------------------------------------------------
     # 虚拟测试数据
-    # ------------------------------------------------------------------
-
-    async def _get_test_camera_data(self) -> Dict[str, Any]:
-        if not hasattr(self, '_test_cam_ctr'):
-            self._test_cam_ctr = 0
-        self._test_cam_ctr += 1
-        try:
-            import cv2, numpy as np, base64
-            img = np.zeros((240, 320, 3), dtype=np.uint8)
-            cv2.putText(img, f'Test {self._test_cam_ctr}', (10, 120),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-            _, jpeg_data = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 80])
-            b64 = base64.b64encode(jpeg_data).decode('utf-8')
-            return {
-                'left_camera': {
-                    'camera_id': 'left_camera', 'topic': '/left_camera/image/compressed',
-                    'timestamp': time.time(), 'sequence': self._test_cam_ctr,
-                    'encoding': 'jpeg', 'width': 320, 'height': 240, 'data': b64,
-                    'compressed': True, 'compressed_size': len(jpeg_data),
-                    'compression_ratio': 15.0, 'frame_rate': 10.0,
-                },
-                'right_camera': {
-                    'camera_id': 'right_camera', 'topic': '/right_camera/image/compressed',
-                    'timestamp': time.time(), 'sequence': self._test_cam_ctr,
-                    'encoding': 'jpeg', 'width': 320, 'height': 240, 'data': b64,
-                    'compressed': True, 'compressed_size': len(jpeg_data),
-                    'compression_ratio': 15.0, 'frame_rate': 10.0,
-                },
-            }
-        except ImportError:
-            return {}
-
-    async def _get_test_gnss_data(self) -> Dict[str, Any]:
-        if not hasattr(self, '_test_gnss_ctr'):
-            self._test_gnss_ctr = 0
-        self._test_gnss_ctr += 1
-        import random, math
-        base_lat, base_lon, base_alt = 39.0790108, 117.7151327, -2.5
-        drift = 0.00001
-        statuses = ['RTK_FIXED', 'RTK_FLOAT', 'GPS_3D']
-        rtk = statuses[self._test_gnss_ctr % 3]
-        return {
-            'rtk_status': rtk,
-            'quality': {
-                'fix_type': 3, 'valid_fix': True,
-                'diff_soln': rtk in ('RTK_FIXED', 'RTK_FLOAT'),
-                'carr_soln': 2 if rtk == 'RTK_FIXED' else 1 if rtk == 'RTK_FLOAT' else 0,
-                'num_sv': random.randint(8, 28),
-            },
-            'position': {
-                'latitude': round(base_lat + random.uniform(-drift, drift), 8),
-                'longitude': round(base_lon + random.uniform(-drift, drift), 8),
-                'altitude': round(base_alt + random.uniform(-0.1, 0.1), 3),
-                'height_msl': round(base_alt + 7.0 + random.uniform(-0.1, 0.1), 3),
-            },
-            'accuracy': {
-                'h_acc': round(random.uniform(0.01, 3.0), 4),
-                'v_acc': round(random.uniform(0.02, 4.0), 4),
-                'p_dop': round(random.uniform(0.5, 3.0), 2),
-            },
-            'velocity': {
-                'vel_n': round(random.uniform(-0.5, 0.5), 3),
-                'vel_e': round(random.uniform(-0.5, 0.5), 3),
-                'vel_d': round(random.uniform(-0.1, 0.1), 3),
-                'vel_acc': round(random.uniform(0.1, 0.3), 3),
-            },
-            'time': {'week': 2393, 'tow': time.time() % 604800},
-            'timestamp': time.time(),
-            'sequence': self._test_gnss_ctr,
-        }
