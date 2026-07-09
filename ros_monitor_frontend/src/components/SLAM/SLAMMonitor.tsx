@@ -1,12 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Row, Col, Typography, Statistic, Tag, Space, Button, Tooltip, InputNumber, Slider } from 'antd';
+import { Card, Row, Col, Typography, Statistic, Tag, Space, Button, Tooltip, InputNumber } from 'antd';
 import {
   AimOutlined,
   EnvironmentOutlined,
   NodeIndexOutlined,
   ReloadOutlined,
   CloudOutlined,
-  FieldTimeOutlined,
   SettingOutlined
 } from '@ant-design/icons';
 import { useSensorStore } from '../../stores/useSensorStore';
@@ -16,7 +15,7 @@ import SLAMViewer3D from './SLAMViewer3D';
 const { Title, Text } = Typography;
 
 export const SLAMMonitor: React.FC = () => {
-  const { robotData, activeRobotId, clearSLAMData, setDecayTime } = useSensorStore();
+  const { robotData, activeRobotId, clearSLAMData } = useSensorStore();
   const slam = activeRobotId ? robotData[activeRobotId]?.slam : null;
   
   // 可手动调整的参数 —— 根据机器性能和网络带宽动态调整
@@ -58,7 +57,7 @@ export const SLAMMonitor: React.FC = () => {
             {slam?.status.connected ? '已连接' : '未连接'}
           </Tag>
           <Tooltip title="清除数据">
-            <Button icon={<ReloadOutlined />} onClick={clearSLAMData}>
+            <Button icon={<ReloadOutlined />} onClick={() => clearSLAMData(activeRobotId || "")}>
               清除
             </Button>
           </Tooltip>

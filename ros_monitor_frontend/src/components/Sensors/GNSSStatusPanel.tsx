@@ -18,7 +18,7 @@ const GNSSStatusPanel: React.FC = () => {
   const latest = gnss?.latest || null;
   
   // 订阅GNSS话题
-  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const retries = useRef(0);
   
   useEffect(() => {

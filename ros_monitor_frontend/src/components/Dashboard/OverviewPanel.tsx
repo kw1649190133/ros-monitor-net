@@ -57,7 +57,6 @@ const RobotCard: React.FC<RobotCardProps> = ({ robotId, index }) => {
   const activeSensors = allSensors.filter(s => s.connected);
 
   const onlineCount = activeSensors.length;
-  const totalSensorTypes = allSensors.length;
   const lastUpdate = Math.max(
     camera.status.lastUpdate,
     lidar.status.lastUpdate,

@@ -107,7 +107,7 @@ export const CameraViewer: React.FC<CameraViewerProps> = ({
     ctx.fillText(`Camera: ${cameraTitle}`, 20, 30);
     ctx.fillText(`Timestamp: ${new Date((cameraData?.timestamp || Date.now() / 1000) * 1000).toLocaleTimeString()}`, 20, 50);
     ctx.fillText(`Resolution: ${cameraData?.width || 0}x${cameraData?.height || 0}`, 20, 70);
-    ctx.fillText(`Frame: ${frameCount} | FPS: ${(cameraData?.frame_rate || 0).toFixed(2)}`, 20, 90);
+    ctx.fillText(`Frame: ${frameCount}`, 20, 90);
   }, [cameraTitle, cameraData, frameCount]);
   
   // 事件处理函数

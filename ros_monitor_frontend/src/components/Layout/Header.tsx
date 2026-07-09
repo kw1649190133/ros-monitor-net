@@ -5,7 +5,6 @@ import {
   MenuUnfoldOutlined,
   WifiOutlined,
   ApiOutlined,
-  RobotOutlined,
   ClockCircleOutlined
 } from '@ant-design/icons';
 import { useSystemStore } from '../../stores/useSystemStore';
