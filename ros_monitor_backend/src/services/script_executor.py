@@ -6,7 +6,7 @@ Script Executor Service
 import asyncio
 import os
 import logging
-from typing import Dict, Optional, NamedTuple
+from typing import Dict, Optional
 from dataclasses import dataclass
 
 from src.utils.data_collection_config import data_collection_config
@@ -32,9 +32,8 @@ class ScriptExecutor:
         """验证脚本路径合法性"""
         if script_name not in data_collection_config.allowed_scripts:
             return False
-            
         full_path = os.path.join(data_collection_config.script_dir, script_name)
-        return os.path.isfile(full_path) and os.access(full_path, os.X_OK)
+        return os.path.isfile(full_path)
     
     def _check_duplicate_start(self, script_name: str) -> bool:
         """检查是否已在运行"""

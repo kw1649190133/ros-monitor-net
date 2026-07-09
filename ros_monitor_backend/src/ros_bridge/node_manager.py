@@ -63,6 +63,10 @@ def _handle_imu(callback, topic: str, msg: dict) -> None:
     callback(payload)
 
 
+# 模块级 GNSS 序列计数器（替代函数属性的可变全局状态）
+_gnss_seq = {'pvt': 0, 'navsatfix': 0}
+
+
 def _handle_gnss_pvt(callback, topic: str, msg: dict) -> None:
     """处理 gnss_comm/GnssPVTSolnMsg 消息。"""
     rtk_status = _resolve_gnss_status(msg)
@@ -97,9 +101,9 @@ def _handle_gnss_pvt(callback, topic: str, msg: dict) -> None:
             'tow': round(msg.get('time', {}).get('tow', 0.0), 1),
         },
         'timestamp': msg.get('header', {}).get('stamp', {}).get('secs', time.time()),
-        'sequence': getattr(_handle_gnss_pvt, '_seq', 0),
+        'sequence': _gnss_seq['pvt'],
     }
-    _handle_gnss_pvt._seq = getattr(_handle_gnss_pvt, '_seq', 0) + 1
+    _gnss_seq['pvt'] += 1
     callback(payload)
 
 
@@ -144,9 +148,9 @@ def _handle_navsatfix(callback, topic: str, msg: dict) -> None:
         'velocity': {'vel_n': 0.0, 'vel_e': 0.0, 'vel_d': 0.0, 'vel_acc': 0.0},
         'time': {'week': 0, 'tow': msg.get('header', {}).get('stamp', {}).get('secs', time.time())},
         'timestamp': msg.get('header', {}).get('stamp', {}).get('secs', time.time()),
-        'sequence': getattr(_handle_navsatfix, '_seq', 0),
+        'sequence': _gnss_seq['navsatfix'],
     }
-    _handle_navsatfix._seq = getattr(_handle_navsatfix, '_seq', 0) + 1
+    _gnss_seq['navsatfix'] += 1
     callback(payload)
 
 

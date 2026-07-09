@@ -1,6 +1,8 @@
 from typing import Dict, Set, List, Any
 from fastapi import WebSocket
+from starlette.websockets import WebSocketState
 import logging
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -14,11 +16,12 @@ class ConnectionManager:
         """接受WebSocket连接"""
         try:
             await ws.accept()
+            now = time.time()
             self.clients[client_id] = ws
             self.subscriptions.setdefault(client_id, set())
             self.client_info[client_id] = {
-                "connected_at": None,
-                "last_activity": None,
+                "connected_at": now,
+                "last_activity": now,
                 "subscription_count": 0
             }
             
@@ -54,7 +57,7 @@ class ConnectionManager:
             # 更新客户端信息
             if client_id in self.client_info:
                 self.client_info[client_id]["subscription_count"] = len(subs)
-                self.client_info[client_id]["last_activity"] = "subscribe"
+                self.client_info[client_id]["last_activity"] = time.time()
             
             ws = self.clients.get(client_id)
             if ws:
@@ -77,7 +80,7 @@ class ConnectionManager:
             # 更新客户端信息
             if client_id in self.client_info:
                 self.client_info[client_id]["subscription_count"] = len(subs)
-                self.client_info[client_id]["last_activity"] = "unsubscribe"
+                self.client_info[client_id]["last_activity"] = time.time()
             
             ws = self.clients.get(client_id)
             if ws:
@@ -94,7 +97,7 @@ class ConnectionManager:
         """发送个人消息给指定客户端"""
         try:
             ws = self.clients.get(client_id)
-            if ws and ws.client_state.value == 1:  # 检查连接状态
+            if ws and ws.client_state == WebSocketState.CONNECTED:
                 await ws.send_json(message)
                 return True
             else:

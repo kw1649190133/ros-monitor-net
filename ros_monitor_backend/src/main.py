@@ -7,6 +7,7 @@ import logging
 import time
 import os
 import json
+import argparse
 from collections import deque
 
 from src.websocket.connection_manager import ConnectionManager
@@ -20,9 +21,10 @@ logger = logging.getLogger(__name__)
 ros_manager = None
 connection_manager = ConnectionManager()
 
-# 机器人连接追踪
+# 机器��连接追踪
 robot_connections: dict = {}       # robot_id -> websocket
 _robot_data_active = False         # 是否有机器人数据接入
+_robot_state_lock = asyncio.Lock()  # 保护 robot_connections 和 _robot_data_active 的并发访问
 ROBOT_HEARTBEAT_TIMEOUT = 30       # 机器人断连判定（秒）
 
 @asynccontextmanager
@@ -61,14 +63,31 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# 中间件配置
+# 中间件配置 — CORS 白名单
+ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "http://localhost:8080",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:8080",
+]
+# 允许通过环境变量扩展
+extra_origin = os.getenv("ALLOWED_ORIGIN", "")
+if extra_origin:
+    ALLOWED_ORIGINS.append(extra_origin)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 开发环境允许所有来源
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+
+# API Key 配置（环境变量，逗号分隔）
+_API_KEYS = set(k for k in os.getenv("API_KEYS", "").split(",") if k)
+
+# 指令白名单
+ALLOWED_COMMANDS = {"set_param", "emergency_stop", "waypoint", "ping"}
 
 # 健康检查API
 @app.get("/api/v1/health")
@@ -126,6 +145,13 @@ async def robot_websocket_endpoint(websocket: WebSocket, robot_id: str):
     global _robot_data_active
     
     await websocket.accept()
+    
+    # API Key 认证（如果配置了密钥则强制校验）
+    api_key = websocket.headers.get("x-api-key") or websocket.query_params.get("token")
+    if _API_KEYS and (not api_key or api_key not in _API_KEYS):
+        await websocket.send_json({"type": "error", "message": "Invalid API Key"})
+        await websocket.close(code=4003)
+        return
     robot_connections[robot_id] = {
         'ws': websocket, 'last_seen': time.time(),
         'bytes_received': 0,
@@ -164,19 +190,20 @@ async def _handle_robot_message(robot_id: str, message: dict):
         hostname = message.get('hostname', robot_id)
         ip = message.get('ip', '')
         logger.info(f"机器人 [{robot_id}] 注册: {hostname} @ {ip}")
-        if robot_id in robot_connections:
-            robot_connections[robot_id]['hostname'] = hostname
-            robot_connections[robot_id]['ip'] = ip
-            robot_connections[robot_id]['last_seen'] = time.time()
-            # 确认注册
-            try:
-                await robot_connections[robot_id]['ws'].send_json({
-                    'type': 'robot_registered',
-                    'message': f'欢迎 {hostname}，服务器已就绪',
-                    'timestamp': time.time(),
-                })
-            except Exception:
-                pass
+        async with _robot_state_lock:
+            if robot_id in robot_connections:
+                robot_connections[robot_id]['hostname'] = hostname
+                robot_connections[robot_id]['ip'] = ip
+                robot_connections[robot_id]['last_seen'] = time.time()
+                # 确认注册
+                try:
+                    await robot_connections[robot_id]['ws'].send_json({
+                        'type': 'robot_registered',
+                        'message': f'欢迎 {hostname}，服务器已就绪',
+                        'timestamp': time.time(),
+                    })
+                except Exception:
+                    pass
         return
     
     elif msg_type == 'sensor_data':
@@ -185,17 +212,20 @@ async def _handle_robot_message(robot_id: str, message: dict):
         
         if ros_manager and topic_name:
             ros_manager._update_data(topic_name, data, robot_id=robot_id)
-            _robot_data_active = True
+            async with _robot_state_lock:
+                _robot_data_active = True
             # 广播 robot_list 给浏览器
             await _broadcast_robot_list()
             
-        if robot_id in robot_connections:
-            robot_connections[robot_id]['last_seen'] = time.time()
+        async with _robot_state_lock:
+            if robot_id in robot_connections:
+                robot_connections[robot_id]['last_seen'] = time.time()
         return
     
     elif msg_type == 'pong':
-        if robot_id in robot_connections:
-            robot_connections[robot_id]['last_seen'] = time.time()
+        async with _robot_state_lock:
+            if robot_id in robot_connections:
+                robot_connections[robot_id]['last_seen'] = time.time()
         return
 
 # ---- 浏览器客户端端点 ----
@@ -439,7 +469,10 @@ async def _broadcast_robot_list():
     RATE_WINDOW = 5.0   # 5秒滑动窗口
     RATE_INTERVAL = 1.0  # 最小刷新间隔
     
-    for rid in list(robot_connections.keys()):
+    async with _robot_state_lock:
+        conn_snapshot = dict(robot_connections)
+    
+    for rid, conn in conn_snapshot.items():
         conn = robot_connections[rid]
         total = conn.get('bytes_received', 0)
         history = conn.get('bytes_history', deque())
@@ -489,8 +522,15 @@ async def send_robot_command(robot_id: str, command: dict):
         "value": 0.5
     }
     """
-    if robot_id not in robot_connections:
-        return {"success": False, "message": f"机器人 {robot_id} 不在线"}
+    async with _robot_state_lock:
+        if robot_id not in robot_connections:
+            return {"success": False, "message": f"机器人 {robot_id} 不在线"}
+        conn_ws = robot_connections[robot_id]['ws']
+    
+    # 指令白名单校验
+    action = command.get("action", "")
+    if action not in ALLOWED_COMMANDS:
+        return {"success": False, "message": f"未授权的指令: {action}"}
     
     try:
         payload = {
@@ -499,7 +539,7 @@ async def send_robot_command(robot_id: str, command: dict):
             "from": "rest_api",
             "timestamp": time.time(),
         }
-        await robot_connections[robot_id]['ws'].send_json(payload)
+        await conn_ws.send_json(payload)
         logger.info(f"REST指令下发: [{robot_id}] {command}")
         return {"success": True, "message": f"指令已下发到 {robot_id}"}
     except Exception as e:
@@ -510,6 +550,8 @@ async def send_robot_command(robot_id: str, command: dict):
 @app.get("/api/v1/robots")
 async def list_robots():
     """列出所有在线机器人。"""
+    async with _robot_state_lock:
+        snap = dict(robot_connections)
     return {
         "success": True,
         "robots": [
@@ -517,9 +559,9 @@ async def list_robots():
              "ip": info.get('ip', '?'), "last_seen": info.get('last_seen', 0),
              "bytes_received": info.get('bytes_received', 0),
              "bytes_rate": info.get('bytes_rate', 0)}
-            for rid, info in robot_connections.items()
+            for rid, info in snap.items()
         ],
-        "count": len(robot_connections),
+        "count": len(snap),
     }
 
 
@@ -528,19 +570,11 @@ from src.api.v1.data_collection import router as data_collection_router
 app.include_router(data_collection_router, prefix="/api/v1")
 
 if __name__ == "__main__":
-    # 从环境变量或命令行参数获取端口
-    import sys
-    port = 8001  # 默认端口改为8001
-    
-    # 支持从环境变量读取
-    if os.getenv('ROS_MONITOR_PORT'):
-        port = int(os.getenv('ROS_MONITOR_PORT'))
-    
-    # 支持命令行参数 --port
-    for i, arg in enumerate(sys.argv):
-        if arg == '--port' and i + 1 < len(sys.argv):
-            port = int(sys.argv[i + 1])
-            break
+    parser = argparse.ArgumentParser(description="ROS Monitor Backend")
+    parser.add_argument("--port", type=int, default=int(os.getenv("ROS_MONITOR_PORT", "8001")),
+                        help="Server port (env: ROS_MONITOR_PORT)")
+    args = parser.parse_args()
+    port = args.port
     
     logger.info(f"Starting server on port {port}")
     uvicorn.run(
