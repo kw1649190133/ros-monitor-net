@@ -16,7 +16,7 @@ import { useSensorStore } from '../../stores/useSensorStore';
 const { Title, Text } = Typography;
 
 export const SystemStatus: React.FC = () => {
-  const { connection, performance, robotConnections } = useSystemStore();
+  const { connection, performance } = useSystemStore();
   const { robotData, activeRobotId } = useSensorStore();
   
   // 获取当前选中机器人的传感器数据
