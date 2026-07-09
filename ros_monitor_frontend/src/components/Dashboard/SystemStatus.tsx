@@ -53,21 +53,21 @@ export const SystemStatus: React.FC = () => {
                   <WifiOutlined />
                   <span>WebSocket</span>
                 </Space>
-                {<StatusBadge connected={connection.websocket} />
+                <StatusBadge connected={connection.websocket} />
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Space>
                   <ApiOutlined />
                   <span>API</span>
                 </Space>
-                {<StatusBadge connected={connection.api} />
+                <StatusBadge connected={connection.api} />
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Space>
                   <RobotOutlined />
                   <span>ROS</span>
                 </Space>
-                {<StatusBadge connected={connection.ros} />
+                <StatusBadge connected={connection.ros} />
               </div>
             </Space>
           </Card>
@@ -134,9 +134,9 @@ export const SystemStatus: React.FC = () => {
                   <span>相机</span>
                 </Space>
                 <Space>
-                  {<StatusBadge connected={camera.status.connected} />
+                  <StatusBadge connected={camera.status.connected} />
                   <span style={{ fontSize: '12px', color: '#666' }}>
-                    {formatFrequency(camera.status.frequency} />
+                    {formatFrequency(camera.status.frequency)}
                   </span>
                 </Space>
               </div>
@@ -152,9 +152,9 @@ export const SystemStatus: React.FC = () => {
                   <span>激光雷达</span>
                 </Space>
                 <Space>
-                  {<StatusBadge connected={lidar.status.connected} />
+                  <StatusBadge connected={lidar.status.connected} />
                   <span style={{ fontSize: '12px', color: '#666' }}>
-                    {formatFrequency(lidar.status.frequency} />
+                    {formatFrequency(lidar.status.frequency)}
                   </span>
                 </Space>
               </div>
@@ -169,9 +169,9 @@ export const SystemStatus: React.FC = () => {
                   <span>GNSS/RTK</span>
                 </Space>
                 <Space>
-                  {<StatusBadge connected={gnss.status.connected} />
+                  <StatusBadge connected={gnss.status.connected} />
                   <span style={{ fontSize: '12px', color: '#666' }}>
-                    {formatFrequency(gnss.status.frequency} />
+                    {formatFrequency(gnss.status.frequency)}
                   </span>
                 </Space>
               </div>
@@ -194,7 +194,7 @@ export const SystemStatus: React.FC = () => {
           >
             <Statistic
               title="运行时间"
-              value={Math.floor(performance.uptime / 60} />
+              value={Math.floor(performance.uptime / 60)}
               suffix="分钟"
               valueStyle={{ color: '#1890ff', fontSize: '28px' }}
             />
