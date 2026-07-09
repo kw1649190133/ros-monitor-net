@@ -76,6 +76,12 @@ export const CameraViewer: React.FC<CameraViewerProps> = ({
     const ctx = canvas?.getContext('2d');
     
     if (!canvas || !ctx || !cameraData?.data) return;
+
+    // encoding 白名单校验，防止注入非图像格式
+    const ALLOWED_ENCODINGS = ['jpeg', 'jpg', 'png', 'webp', 'bmp'];
+    if (!ALLOWED_ENCODINGS.includes(cameraData.encoding.toLowerCase())) {
+      return;
+    }
     
     const img = new Image();
     img.onload = () => {

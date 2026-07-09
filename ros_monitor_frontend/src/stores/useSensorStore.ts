@@ -52,11 +52,12 @@ function createRobotState(): RobotSensorState {
   };
 }
 
-function ensureRobot(state: SensorStore, robotId: string): RobotSensorState {
-  if (!state.robotData[robotId]) {
-    state.robotData[robotId] = createRobotState();
+function ensureRobot(robotData: Record<string, RobotSensorState>, robotId: string): [Record<string, RobotSensorState>, RobotSensorState] {
+  if (!robotData[robotId]) {
+    const r = createRobotState();
+    return [{ ...robotData, [robotId]: r }, r];
   }
-  return state.robotData[robotId];
+  return [robotData, robotData[robotId]];
 }
 
 
@@ -97,18 +98,19 @@ export const useSensorStore = create<SensorStore>((set) => ({
   // ---- 机器人管理 ----
 
   setRobotList: (ids: string[]) => set((state) => {
-    // 保留已有机器人数据，只更新列表
     const existingIds = Object.keys(state.robotData);
     const newIds = ids.filter(id => !existingIds.includes(id));
     
-    // 为新机器人创建初始状态
+    // 为新机器人创建初始状态（non-mutating）
+    let robotData = state.robotData;
     for (const id of newIds) {
-      if (!state.robotData[id]) {
-        state.robotData[id] = createRobotState();
+      if (!robotData[id]) {
+        robotData = { ...robotData, [id]: createRobotState() };
       }
     }
     
     return {
+      robotData,
       robotIds: ids,
       // 如果当前选中的机器人不在线，自动选第一个
       activeRobotId: state.activeRobotId && ids.includes(state.activeRobotId)
@@ -134,49 +136,49 @@ export const useSensorStore = create<SensorStore>((set) => ({
 
   updateCameraData: (robotId: string, camera: 'left' | 'right', data: CameraData) =>
     set((state) => {
-      const robot = ensureRobot(state, robotId);
+      const [robotData, robot] = ensureRobot(state.robotData, robotId);
       robot.camera[camera] = data;
       robot.camera.status = { ...robot.camera.status, connected: true, lastUpdate: Date.now() };
-      return { robotData: { ...state.robotData, [robotId]: robot } };
+      return { robotData: { ...robotData, [robotId]: robot } };
     }),
 
   updateLidarData: (robotId: string, data: LidarData) =>
     set((state) => {
-      const robot = ensureRobot(state, robotId);
+      const [robotData, robot] = ensureRobot(state.robotData, robotId);
       robot.lidar.latest = data;
       robot.lidar.status = { ...robot.lidar.status, connected: true, lastUpdate: Date.now() };
-      return { robotData: { ...state.robotData, [robotId]: robot } };
+      return { robotData: { ...robotData, [robotId]: robot } };
     }),
 
   updateGNSSData: (robotId: string, data: GNSSData) =>
     set((state) => {
-      const robot = ensureRobot(state, robotId);
+      const [robotData, robot] = ensureRobot(state.robotData, robotId);
       robot.gnss.latest = data;
       robot.gnss.history = [...robot.gnss.history.slice(-99), data];
       robot.gnss.status = { ...robot.gnss.status, connected: true, lastUpdate: Date.now() };
-      return { robotData: { ...state.robotData, [robotId]: robot } };
+      return { robotData: { ...robotData, [robotId]: robot } };
     }),
 
   updatePathData: (robotId: string, data: PathData) =>
     set((state) => {
-      const robot = ensureRobot(state, robotId);
+      const [robotData, robot] = ensureRobot(state.robotData, robotId);
       robot.slam.path = data;
       robot.slam.pathHistory = [...robot.slam.pathHistory.slice(-49), data];
       robot.slam.status = { ...robot.slam.status, connected: true, lastUpdate: Date.now() };
-      return { robotData: { ...state.robotData, [robotId]: robot } };
+      return { robotData: { ...robotData, [robotId]: robot } };
     }),
 
   updateOdometryData: (robotId: string, data: OdometryData) =>
     set((state) => {
-      const robot = ensureRobot(state, robotId);
+      const [robotData, robot] = ensureRobot(state.robotData, robotId);
       robot.slam.odometry = data;
       robot.slam.status = { ...robot.slam.status, connected: true, lastUpdate: Date.now() };
-      return { robotData: { ...state.robotData, [robotId]: robot } };
+      return { robotData: { ...robotData, [robotId]: robot } };
     }),
 
   updateRegisteredCloudData: (robotId: string, data: RegisteredCloudData) =>
     set((state) => {
-      const robot = ensureRobot(state, robotId);
+      const [robotData, robot] = ensureRobot(state.robotData, robotId);
       const now = Date.now() / 1000;
       const decayTime = robot.slam.decayTime;
       const filteredHistory = robot.slam.cloudHistory.filter(
@@ -185,42 +187,42 @@ export const useSensorStore = create<SensorStore>((set) => ({
       robot.slam.registeredCloud = data;
       robot.slam.cloudHistory = [...filteredHistory, data];
       robot.slam.status = { ...robot.slam.status, connected: true, lastUpdate: Date.now() };
-      return { robotData: { ...state.robotData, [robotId]: robot } };
+      return { robotData: { ...robotData, [robotId]: robot } };
     }),
 
   setDecayTime: (robotId: string, decayTime: number) =>
     set((state) => {
-      const robot = ensureRobot(state, robotId);
+      const [robotData, robot] = ensureRobot(state.robotData, robotId);
       robot.slam.decayTime = decayTime;
-      return { robotData: { ...state.robotData, [robotId]: robot } };
+      return { robotData: { ...robotData, [robotId]: robot } };
     }),
 
   updateSensorStatus: (robotId: string, sensor: 'camera' | 'lidar' | 'gnss' | 'slam', status: Partial<SensorStatus>) =>
     set((state) => {
-      const robot = ensureRobot(state, robotId);
+      const [robotData, robot] = ensureRobot(state.robotData, robotId);
       robot[sensor].status = { ...robot[sensor].status, ...status };
-      return { robotData: { ...state.robotData, [robotId]: robot } };
+      return { robotData: { ...robotData, [robotId]: robot } };
     }),
 
   // ---- 清理 ----
 
   clearGNSSData: (robotId: string) =>
     set((state) => {
-      const robot = ensureRobot(state, robotId);
+      const [robotData, robot] = ensureRobot(state.robotData, robotId);
       robot.gnss = { latest: null, history: [], status: { ...initialSensorStatus } };
-      return { robotData: { ...state.robotData, [robotId]: robot } };
+      return { robotData: { ...robotData, [robotId]: robot } };
     }),
 
   clearSLAMData: (robotId: string) =>
     set((state) => {
-      const robot = ensureRobot(state, robotId);
+      const [robotData, robot] = ensureRobot(state.robotData, robotId);
       robot.slam = {
         path: null, odometry: null, registeredCloud: null,
         pathHistory: [], cloudHistory: [],
         decayTime: robot.slam.decayTime,
         status: { ...initialSensorStatus },
       };
-      return { robotData: { ...state.robotData, [robotId]: robot } };
+      return { robotData: { ...robotData, [robotId]: robot } };
     }),
 
   clearAllData: () => set({ robotData: {}, robotIds: [], activeRobotId: null }),
