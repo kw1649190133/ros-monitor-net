@@ -4,7 +4,6 @@ import {
   CheckCircleOutlined,
   CloseCircleOutlined
 } from '@ant-design/icons';
-import { useWebSocket } from '../../hooks/useWebSocket';
 import { useSystemStore } from '../../stores/useSystemStore';
 
 interface ConnectionStatusProps {
@@ -12,8 +11,8 @@ interface ConnectionStatusProps {
 }
 
 export const ConnectionStatus: React.FC<ConnectionStatusProps> = ({ className }) => {
-  const { connected: wsConnected } = useWebSocket();
   const { connection, performance } = useSystemStore();
+  const wsConnected = connection.websocket;
   
   const getConnectionIcon = (status: boolean) => {
     if (status) {

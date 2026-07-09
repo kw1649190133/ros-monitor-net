@@ -1,12 +1,7 @@
 import { useSensorStore } from '../stores/useSensorStore';
 import { useSystemStore } from '../stores/useSystemStore';
 import { config } from '../utils/constants';
-
-export interface WSMessage {
-  type: string;
-  timestamp: string;
-  data: any;
-}
+import type { InboundMessage, OutboundMessage } from '../types/websocket';
 
 export class WebSocketService {
   private ws: WebSocket | null = null;
@@ -39,21 +34,10 @@ export class WebSocketService {
         this.ws = new WebSocket(this.url);
         
         this.ws.onopen = () => {
-          console.log('✅ WebSocket connected successfully');
+          console.log('WebSocket connected successfully');
           this.isConnecting = false;
           this.reconnectAttempts = 0;
           
-          // 发送认证消息
-          const token = localStorage.getItem('access_token');
-          if (token) {
-            this.send({
-              type: 'auth',
-              timestamp: new Date().toISOString(),
-              data: { token }
-            });
-          }
-          
-          // 更新系统状态
           useSystemStore.getState().updateConnectionStatus('websocket', true);
           
           resolve();
@@ -61,7 +45,7 @@ export class WebSocketService {
         
         this.ws.onmessage = (event) => {
           try {
-            const message: WSMessage = JSON.parse(event.data);
+            const message = JSON.parse(event.data) as InboundMessage;
             this.handleMessage(message);
           } catch (error) {
             console.error('Failed to parse WebSocket message:', error);
@@ -88,11 +72,9 @@ export class WebSocketService {
     });
   }
   
-  private handleMessage(message: WSMessage | any): void {
-    const { type, data } = message;
-    
-    // 提取机器人 ID（后端广播消息带 robot_id）
-    const robotId: string = message.robot_id || '_direct';
+  private handleMessage(message: InboundMessage): void {
+    const type = message.type;
+    const robotId: string = ('robot_id' in message) ? (message as { robot_id?: string }).robot_id || '_direct' : '_direct';
     
     switch (type) {
       case 'connected':
@@ -101,12 +83,11 @@ export class WebSocketService {
         
       case 'subscribed':
       case 'subscription_confirmed':
-        const topics = message.topics || (data && data.topics) || [];
-        console.log('话题订阅成功:', topics);
+        console.log('话题订阅成功:', message.topics);
         break;
       
       case 'unsubscribed':
-        console.log('取消订阅:', message.topics || []);
+        console.log('取消订阅:', message.topics);
         break;
 
       case 'robot_list_updated':
@@ -118,39 +99,39 @@ export class WebSocketService {
         break;
         
       case 'camera':
-        this.handleCameraData(robotId, data || message);
+        this.handleCameraData(robotId, message);
         break;
         
       case 'lidar':
-        this.handleLidarData(robotId, data || message);
+        this.handleLidarData(robotId, message);
         break;
       
       case 'gnss':
-        this.handleGNSSData(robotId, data || message);
+        this.handleGNSSData(robotId, message);
         break;
 
       case 'slam_path':
-        this.handlePathData(robotId, data || message);
+        this.handlePathData(robotId, message);
         break;
 
       case 'slam_odometry':
-        this.handleOdometryData(robotId, data || message);
+        this.handleOdometryData(robotId, message);
         break;
 
       case 'slam_cloud':
-        this.handleRegisteredCloudData(robotId, data || message);
+        this.handleRegisteredCloudData(robotId, message);
         break;
 
       case 'system_status':
-        this.handleSystemStatus(data || message);
+        this.handleSystemStatus(message);
         break;
 
       case 'ack':
-        console.log('Message acknowledged:', data || message);
+        console.log('Message acknowledged:', message.message);
         break;
 
       case 'error':
-        console.error('服务器错误:', message.message || data);
+        console.error('服务器错误:', message.message);
         break;
 
       default:
@@ -158,112 +139,97 @@ export class WebSocketService {
     }
   }
   
-
-  
-  private handleRobotListUpdated(message: any): void {
-    const robots: string[] = message.robots || [];
+  private handleRobotListUpdated(msg: import('../types/websocket').WSRobotListMessage): void {
+    const robots = msg.robots;
     console.log('在线机器人列表更新:', robots);
     useSensorStore.getState().setRobotList(robots);
-    // 同步更新 system store
     const systemStore = useSystemStore.getState();
     robots.forEach((rid: string) => systemStore.updateRobotConnection(rid, 'ros', true));
-    // 更新流量信息
-    if (message.traffic) {
-      systemStore.updateRobotTraffic(message.traffic);
+    if (msg.traffic) {
+      systemStore.updateRobotTraffic(msg.traffic);
     }
   }
 
-  private handleCameraData(robotId: string, data: any): void {
-    const sensorStore = useSensorStore.getState();
-    if (data.camera_id) {
-      sensorStore.updateCameraData(robotId, data.camera_id, {
-        camera_id: data.camera_id,
-        timestamp: data.timestamp,
-        sequence: data.sequence || 0,
-        encoding: data.encoding,
-        width: data.width,
-        height: data.height,
-        data: data.data,
-        compressed: data.compressed || false
+  private handleCameraData(robotId: string, msg: import('../types/websocket').WSCameraMessage): void {
+    const { camera_id, timestamp, sequence = 0, encoding, width, height, data, compressed = false } = msg.data;
+    if (camera_id) {
+      useSensorStore.getState().updateCameraData(robotId, camera_id, {
+        camera_id, timestamp, sequence, encoding, width, height, data, compressed,
       });
     }
   }
   
-  private handleLidarData(robotId: string, data: any): void {
-    const sensorStore = useSensorStore.getState();
-    sensorStore.updateLidarData(robotId, {
-      timestamp: data.timestamp,
-      frame_id: data.frame_id || 'map',
-      point_count: data.point_count,
-      points: data.data
+  private handleLidarData(robotId: string, msg: import('../types/websocket').WSLidarMessage): void {
+    const { timestamp, frame_id = 'map', point_count, data: points } = msg.data;
+    useSensorStore.getState().updateLidarData(robotId, {
+      timestamp, frame_id, point_count, points,
     });
   }
   
-  private handleSystemStatus(data: any): void {
-    const systemStore = useSystemStore.getState();
-    systemStore.updatePerformanceMetrics({
-      dataRate: data.data_rate || 0,
-      errorCount: data.error_count || 0
+  private handleSystemStatus(msg: import('../types/websocket').WSSystemStatusMessage): void {
+    useSystemStore.getState().updatePerformanceMetrics({
+      dataRate: 0,
+      errorCount: 0,
     });
   }
   
-  private handleGNSSData(robotId: string, data: any): void {
-    const sensorStore = useSensorStore.getState();
-    sensorStore.updateGNSSData(robotId, {
-      rtk_status: data.rtk_status,
-      quality: data.quality,
-      position: data.position,
-      accuracy: data.accuracy,
-      velocity: data.velocity,
-      time: data.time,
-      timestamp: data.timestamp,
-      sequence: data.sequence
+  private handleGNSSData(robotId: string, msg: import('../types/websocket').WSGNSSMessage): void {
+    const d = msg.data;
+    useSensorStore.getState().updateGNSSData(robotId, {
+      rtk_status: d.rtk_status,
+      quality: d.quality,
+      position: d.position,
+      accuracy: d.accuracy,
+      velocity: d.velocity,
+      time: d.time,
+      timestamp: d.timestamp,
+      sequence: d.sequence,
     });
   }
 
-  private handlePathData(robotId: string, data: any): void {
-    const sensorStore = useSensorStore.getState();
-    sensorStore.updatePathData(robotId, {
-      topic: data.topic,
-      timestamp: data.timestamp,
-      frame_id: data.frame_id,
-      sequence: data.sequence,
-      total_poses: data.total_poses,
-      sampled_poses: data.sampled_poses,
-      poses: data.poses
+  private handlePathData(robotId: string, msg: import('../types/websocket').WSPathMessage): void {
+    const d = msg.data;
+    useSensorStore.getState().updatePathData(robotId, {
+      topic: d.topic,
+      timestamp: d.timestamp,
+      frame_id: d.frame_id,
+      sequence: d.sequence,
+      total_poses: d.total_poses,
+      sampled_poses: d.sampled_poses,
+      poses: d.poses,
     });
   }
 
-  private handleOdometryData(robotId: string, data: any): void {
-    const sensorStore = useSensorStore.getState();
-    sensorStore.updateOdometryData(robotId, {
-      topic: data.topic,
-      timestamp: data.timestamp,
-      frame_id: data.frame_id,
-      child_frame_id: data.child_frame_id,
-      sequence: data.sequence,
-      pose: data.pose,
-      twist: data.twist
+  private handleOdometryData(robotId: string, msg: import('../types/websocket').WSOdometryMessage): void {
+    const d = msg.data;
+    useSensorStore.getState().updateOdometryData(robotId, {
+      topic: d.topic,
+      timestamp: d.timestamp,
+      frame_id: d.frame_id,
+      child_frame_id: d.child_frame_id,
+      sequence: d.sequence,
+      pose: d.pose,
+      twist: d.twist,
     });
   }
 
-  private handleRegisteredCloudData(robotId: string, data: any): void {
-    const sensorStore = useSensorStore.getState();
-    sensorStore.updateRegisteredCloudData(robotId, {
-      topic: data.topic,
-      timestamp: data.timestamp,
-      frame_id: data.frame_id,
-      sequence: data.sequence,
-      total_points: data.total_points,
-      sampled_points: data.sampled_points,
-      points: data.points,
-      fields: data.fields,
-      colors: data.colors,
-      has_rgb: data.has_rgb
+  private handleRegisteredCloudData(robotId: string, msg: import('../types/websocket').WSCloudMessage): void {
+    const d = msg.data;
+    useSensorStore.getState().updateRegisteredCloudData(robotId, {
+      topic: d.topic,
+      timestamp: d.timestamp,
+      frame_id: d.frame_id,
+      sequence: d.sequence,
+      total_points: d.total_points,
+      sampled_points: d.sampled_points,
+      points: d.points,
+      fields: d.fields,
+      colors: d.colors,
+      has_rgb: d.has_rgb,
     });
   }
 
-  send(message: WSMessage): void {
+  send(message: OutboundMessage): void {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(message));
     } else {
@@ -273,24 +239,15 @@ export class WebSocketService {
   
   subscribe(topics: string[]): void {
     if (!this.isConnected()) {
-      console.warn('⚠️ WebSocket还未连接，无法订阅:', topics);
+      console.warn('WebSocket还未连接，无法订阅:', topics);
       return;
     }
-    
-    this.send({
-      type: 'subscribe',
-      timestamp: new Date().toISOString(),
-      data: { topics }
-    });
-    console.log('📡 发送订阅请求:', topics);
+    this.send({ type: 'subscribe', data: { topics } });
+    console.log('发送订阅请求:', topics);
   }
   
   unsubscribe(topics: string[]): void {
-    this.send({
-      type: 'unsubscribe',
-      timestamp: new Date().toISOString(),
-      data: { topics }
-    });
+    this.send({ type: 'unsubscribe', data: { topics } });
   }
   
   private attemptReconnect(): void {
@@ -323,5 +280,4 @@ export class WebSocketService {
   }
 }
 
-// 单例WebSocket服务
 export const wsService = new WebSocketService();

@@ -7,22 +7,10 @@ import {
   CameraOutlined,
   ReloadOutlined
 } from '@ant-design/icons';
-import { useWebSocket } from '../hooks/useWebSocket';
-
-interface CameraData {
-  camera_id: string;
-  topic: string;
-  timestamp: number;
-  sequence: number;
-  encoding: string;
-  width: number;
-  height: number;
-  data: string;
-  compressed: boolean;
-  compressed_size: number;
-  compression_ratio: number;
-  frame_rate: number;
-}
+import { useSensorStore } from '../stores/useSensorStore';
+import { useSystemStore } from '../stores/useSystemStore';
+import { wsService } from '../services/websocket';
+import type { CameraData } from '../types/sensors';
 
 interface CameraViewerProps {
   cameraId: 'left_camera' | 'right_camera';
@@ -37,74 +25,44 @@ export const CameraViewer: React.FC<CameraViewerProps> = ({
   const [isStreaming, setIsStreaming] = useState(false);
   const [imageScale, setImageScale] = useState(1.0);
   const [showSettings, setShowSettings] = useState(false);
-  const [cameraData, setCameraData] = useState<CameraData | null>(null);
   const [lastUpdateTime, setLastUpdateTime] = useState<number>(0);
   const [frameCount, setFrameCount] = useState(0);
   const [errorCount, setErrorCount] = useState(0);
   
-  const { connected, sendMessage } = useWebSocket();
+  const { robotData, activeRobotId } = useSensorStore();
+  const wsConnected = useSystemStore(s => s.connection.websocket);
+  
+  // 从 store 读取相机数据（wsService 已自动分发给 store）
+  const robotState = activeRobotId ? robotData[activeRobotId] : null;
+  const camera = robotState?.camera?.[cameraId === 'left_camera' ? 'left' : 'right'] ?? null;
+  const cameraData = camera as CameraData | null;
   
   // 相机标题和状态
   const cameraTitle = cameraId === 'left_camera' ? '左相机' : '右相机';
   const connectionStatus = cameraData ? 'connected' : 'disconnected';
   
-  // 处理WebSocket消息
+  // 监听 store 中相机数据变化
   useEffect(() => {
-    if (!connected) return;
-    
-    // 设置消息处理函数
-    const handleWebSocketMessage = (message: any) => {
-      try {
-        if (message.type === 'camera' && message.camera_id === cameraId) {
-          console.log(`收到相机数据: ${cameraId}`, message);
-          setCameraData(message.data);
-          setLastUpdateTime(Date.now());
-          setFrameCount(prev => prev + 1);
-          setErrorCount(0);
-        }
-      } catch (error) {
-        console.error('Failed to parse WebSocket message:', error);
-        setErrorCount(prev => prev + 1);
-      }
-    };
-    
-    // 使用自定义事件来传递WebSocket消息
-    const messageHandler = (event: CustomEvent) => {
-      handleWebSocketMessage(event.detail);
-    };
-    
-    window.addEventListener('websocket-message', messageHandler as EventListener);
-    
-    return () => {
-      window.removeEventListener('websocket-message', messageHandler as EventListener);
-    };
-  }, [connected, cameraId]);
+    if (cameraData) {
+      setLastUpdateTime(Date.now());
+      setFrameCount(prev => prev + 1);
+      setErrorCount(0);
+    }
+  }, [cameraData]);
   
-  // 订阅/取消订阅相机数据
+  // 订阅/取消订阅相机数据（通过 wsService 单例）
   useEffect(() => {
-    if (!connected) return;
+    if (!wsConnected) return;
     
     if (isStreaming) {
-      // 订阅相机数据
-      console.log(`📡 ${cameraTitle} 订阅相机数据流`);
-      sendMessage({
-        type: 'subscribe',
-        topics: ['camera']
-      });
+      wsService.subscribe(['camera']);
       message.success(`${cameraTitle} 数据流已开启`);
     } else {
-      // 取消订阅 - 清空相机数据显示
-      console.log(`❌ ${cameraTitle} 取消订阅相机数据流`);
-      sendMessage({
-        type: 'unsubscribe',
-        topics: ['camera']
-      });
-      // 清空相机数据，停止显示
-      setCameraData(null);
+      wsService.unsubscribe(['camera']);
       setFrameCount(0);
       message.info(`${cameraTitle} 数据流已停止`);
     }
-  }, [isStreaming, connected, sendMessage, cameraTitle]);
+  }, [isStreaming, wsConnected, cameraTitle]);
   
   // 绘制图像到Canvas
   useEffect(() => {
