@@ -28,7 +28,7 @@ export const SystemStatus: React.FC = () => {
   
 
   const formatFrequency = (freq: number) => 
-    freq > 0 ? `${freq.toFixed(1} /> Hz` : '0 Hz';
+    freq > 0 ? `${freq.toFixed(1)} Hz` : '0 Hz';
 
   return (
     <div style={{ width: '100%' }}>

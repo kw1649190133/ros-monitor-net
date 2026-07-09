@@ -12,8 +12,7 @@ const CoordinateAxes: React.FC<{ size?: number }> = React.memo(({ size = 2 }) =>
       <Line points={[[0, 0, 0], [0, size, 0]]} color="green" lineWidth={2} />
       <Line points={[[0, 0, 0], [0, 0, size]]} color="blue" lineWidth={2} />
     </group>
-  );
-};
+  ));
 
 // 轨迹线组件
 const TrajectoryLine: React.FC = React.memo(() => {
@@ -30,7 +29,7 @@ const TrajectoryLine: React.FC = React.memo(() => {
   if (points.length < 2) return null;
   
   return <Line points={points} color="#00ff00" lineWidth={2} />;
-};
+});
 
 // 当前位姿标记
 const CurrentPoseMarker: React.FC = React.memo(() => {
@@ -54,7 +53,7 @@ const CurrentPoseMarker: React.FC = React.memo(() => {
       </mesh>
     </group>
   );
-};
+});
 
 // 当前帧点云 - 固定红色
 const CurrentFrameCloud: React.FC = React.memo(() => {
@@ -84,7 +83,7 @@ const CurrentFrameCloud: React.FC = React.memo(() => {
       <pointsMaterial size={0.04} color="#ff0000" sizeAttenuation />
     </points>
   );
-};
+});
 
 // 历史点云 - 支持手动调整最大点数和帧数
 const HistoryMapCloud: React.FC<{ maxPoints?: number; maxFrames?: number }> = React.memo(({
