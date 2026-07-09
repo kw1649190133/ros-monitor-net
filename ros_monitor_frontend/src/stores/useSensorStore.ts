@@ -179,7 +179,7 @@ export const useSensorStore = create<SensorStore>((set, get) => ({
       const now = Date.now() / 1000;
       const decayTime = robot.slam.decayTime;
       const filteredHistory = robot.slam.cloudHistory.filter(
-        cloud => (now - cloud.timestamp) < decayTime
+        cloud => (now - ((cloud as any)._received_at ?? cloud.timestamp)) < decayTime
       );
       robot.slam.registeredCloud = data;
       robot.slam.cloudHistory = [...filteredHistory, data];

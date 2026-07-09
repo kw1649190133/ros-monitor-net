@@ -535,15 +535,13 @@ class ROSNodeManager:
 
     def _update_data(self, topic: str, data: Dict[str, Any], robot_id: str = '_direct'):
         """线程安全地更新最新数据。robot_id='_direct' 为 rosbridge 直连模式。
-        注意：将 data['timestamp'] 统一覆盖为绝对时间戳，与前端 Date.now()/1000 对齐。"""
+        保留 data 内的原始传感器时间戳不变，附加 _received_at 记录服务器接收时间。"""
         with self._lock:
             if robot_id not in self.robot_data:
                 self.robot_data[robot_id] = {}
-            # 统一 data 里的 timestamp 为绝对时间戳，防止前端 cloudHistory 过滤失效
-            data['timestamp'] = time.time()
             self.robot_data[robot_id][topic] = {
                 'timestamp': time.time(),
-                'data': data,
+                'data': {**data, '_received_at': time.time()},
                 'updated_at': time.time(),
             }
         logger.debug(f"数据更新: [{robot_id}] {topic}")

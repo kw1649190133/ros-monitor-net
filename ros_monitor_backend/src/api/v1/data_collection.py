@@ -55,9 +55,11 @@ async def start_data_collection(request: StartRequest):
         result = await script_executor.execute_script(request.script, request.timeout)
         
         if result.success:
-            # 更新状态
+            # 生成唯一标识并更新状态
+            proc_id = int(time.time() * 1000)
             _status_cache.update({
                 "is_running": True,
+                "process_id": proc_id,
                 "start_time": time.time(),
                 "script_path": f"{data_collection_config.script_dir}/{request.script}",
                 "last_update": time.time()
@@ -68,7 +70,7 @@ async def start_data_collection(request: StartRequest):
                 "success": True,
                 "message": "数据采集已启动",
                 "data": {
-                    "process_id": result.exit_code,  # 简化：用exit_code代替真实PID
+                    "process_id": proc_id,
                     "start_time": _status_cache["start_time"],
                     "script_path": _status_cache["script_path"]
                 }
@@ -131,7 +133,7 @@ async def get_collection_status():
         "success": True,
         "data": DataCollectionStatus(
             is_running=_status_cache["is_running"],
-            process_id=12345 if _status_cache["is_running"] else None,  # 简化实现
+            process_id=_status_cache.get("process_id") if _status_cache["is_running"] else None,
             start_time=_status_cache["start_time"],
             script_path=_status_cache["script_path"],
             last_update=_status_cache["last_update"]

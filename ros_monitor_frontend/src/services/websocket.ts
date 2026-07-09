@@ -11,8 +11,8 @@ export interface WSMessage {
 export class WebSocketService {
   private ws: WebSocket | null = null;
   private reconnectAttempts = 0;
-  private maxReconnectAttempts = 5;
-  private reconnectInterval = 3000;
+  private maxReconnectAttempts = config.WS_RECONNECT_ATTEMPTS;
+  private reconnectInterval = config.WS_RECONNECT_INTERVAL;
   private clientId: string;
   private url: string = '';
   private isConnecting = false;
@@ -311,6 +311,7 @@ export class WebSocketService {
   }
   
   disconnect(): void {
+    this.reconnectAttempts = 0;
     if (this.ws) {
       this.ws.close();
       this.ws = null;

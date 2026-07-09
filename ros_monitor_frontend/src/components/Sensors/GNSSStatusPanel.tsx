@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Card, Statistic, Row, Col, Tag, Space, Typography } from 'antd';
 import { 
   CheckCircleOutlined, 
@@ -18,23 +18,26 @@ const GNSSStatusPanel: React.FC = () => {
   const latest = gnss?.latest || null;
   
   // 订阅GNSS话题
+  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  const retries = useRef(0);
+  
   useEffect(() => {
-    // 等待WebSocket连接后再订阅
+    // 等待WebSocket连接后再订阅（带重试上限和清理）
     const subscribeGNSS = () => {
       if (wsService.isConnected()) {
-        console.log('📡 GNSSStatusPanel: 订阅GNSS话题');
         wsService.subscribe(['gnss']);
-      } else {
-        console.log('⏳ GNSSStatusPanel: 等待WebSocket连接...');
-        // 如果WebSocket还没连接，等待500ms后重试
-        setTimeout(subscribeGNSS, 500);
+        return;
+      }
+      retries.current += 1;
+      if (retries.current < 20) {
+        timerRef.current = setTimeout(subscribeGNSS, 500);
       }
     };
     
     subscribeGNSS();
     
     return () => {
-      console.log('📡 GNSSStatusPanel: 取消订阅GNSS话题');
+      if (timerRef.current) clearTimeout(timerRef.current);
       if (wsService.isConnected()) {
         wsService.unsubscribe(['gnss']);
       }

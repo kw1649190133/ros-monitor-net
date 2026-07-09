@@ -11,7 +11,6 @@ from collections import deque
 
 from src.websocket.connection_manager import ConnectionManager
 from src.ros_bridge.node_manager import ROSNodeManager
-from src.api.v1.data_collection import router as data_collection_router
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Card, Row, Col, Statistic, Badge, Space, Typography, Divider, Alert } from 'antd';
+import { Card, Row, Col, Statistic, Badge, Space, Typography, Divider } from 'antd';
 import { 
   WifiOutlined,
   ApiOutlined,
@@ -27,9 +27,6 @@ export const SystemStatus: React.FC = () => {
   
   const activeRobotConn = activeRobotId ? robotConnections[activeRobotId] : null;
 
-  // 添加调试信息
-  console.log('SystemStatus rendered:', { connection, performance, camera, lidar, gnss });
-
   const getStatusBadge = (connected: boolean) => (
     <Badge 
       status={connected ? 'success' : 'error'} 
@@ -45,15 +42,6 @@ export const SystemStatus: React.FC = () => {
 
   return (
     <div style={{ width: '100%' }}>
-      {/* 调试信息 */}
-      <Alert
-        message="组件渲染成功"
-        description={`当前页面: 仪表盘 | 连接状态: WebSocket(${connection.websocket}), API(${connection.api}), ROS(${connection.ros})`}
-        type="success"
-        showIcon
-        style={{ marginBottom: '24px' }}
-      />
-      
       {/* 页面标题 */}
       <div style={{ marginBottom: '32px', textAlign: 'center' }}>
         <Title level={2} style={{ color: '#1890ff', marginBottom: '12px' }}>
