@@ -1,3 +1,4 @@
+import { debugLog } from '../utils/logger';
 import { create } from 'zustand';
 import type { CameraData, LidarData, SensorStatus, PathData, OdometryData, RegisteredCloudData } from '../types/sensors';
 import type { GNSSData } from '../types/gnss';

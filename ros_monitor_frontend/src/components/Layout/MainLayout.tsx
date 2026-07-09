@@ -1,3 +1,4 @@
+import { debugLog } from '../../utils/logger';
 import React, { useEffect } from 'react';
 
 import { Header } from './Header';
@@ -22,9 +23,9 @@ export const MainLayout: React.FC = () => {
   useEffect(() => {
     const connectWebSocket = async () => {
       try {
-        console.log('🔌 正在连接WebSocket...');
+        debugLog('🔌 正在连接WebSocket...');
         await wsService.connect(config.API_HOST, config.API_PORT);
-        console.log('✅ WebSocket全局连接成功');
+        debugLog('✅ WebSocket全局连接成功');
         
         // 订阅所有传感器话题（多机模式下必须显式订阅才能接收广播数据）
         wsService.subscribe(['camera', 'lidar', 'gnss', 'imu', 'slam']);
@@ -42,21 +43,21 @@ export const MainLayout: React.FC = () => {
     connectWebSocket();
 
     return () => {
-      console.log('🔌 断开WebSocket连接...');
+      debugLog('🔌 断开WebSocket连接...');
       wsService.disconnect();
     };
   }, []);
 
   // 初始化API健康检查
   useEffect(() => {
-    console.log('🚀 启动API健康检查...');
+    debugLog('🚀 启动API健康检查...');
     
     // 开始定期健康检查（每10秒检查一次）
     apiService.startHealthCheck(10000);
     
     // 组件卸载时停止健康检查
     return () => {
-      console.log('🛑 停止API健康检查...');
+      debugLog('🛑 停止API健康检查...');
       apiService.stopHealthCheck();
     };
   }, []);

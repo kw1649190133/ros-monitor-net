@@ -1,3 +1,4 @@
+import { debugLog, errorLog } from '../utils/logger';
 import { useSensorStore } from '../stores/useSensorStore';
 import { useSystemStore } from '../stores/useSystemStore';
 import { config } from '../utils/constants';
@@ -30,11 +31,11 @@ export class WebSocketService {
     
     return new Promise((resolve, reject) => {
       try {
-        console.log('Connecting to WebSocket:', this.url);
+        debugLog('Connecting to WebSocket:', this.url);
         this.ws = new WebSocket(this.url);
         
         this.ws.onopen = () => {
-          console.log('WebSocket connected successfully');
+          debugLog('WebSocket connected successfully');
           this.isConnecting = false;
           this.reconnectAttempts = 0;
           
@@ -48,19 +49,19 @@ export class WebSocketService {
             const message = JSON.parse(event.data) as InboundMessage;
             this.handleMessage(message);
           } catch (error) {
-            console.error('Failed to parse WebSocket message:', error);
+            errorLog('Failed to parse WebSocket message:', error);
           }
         };
         
         this.ws.onclose = (event) => {
-          console.log('WebSocket disconnected:', event.code, event.reason);
+          debugLog('WebSocket disconnected:', event.code, event.reason);
           this.isConnecting = false;
           useSystemStore.getState().updateConnectionStatus('websocket', false);
           this.attemptReconnect();
         };
         
         this.ws.onerror = (error) => {
-          console.error('WebSocket error:', error);
+          errorLog('WebSocket error:', error);
           this.isConnecting = false;
           reject(error);
         };
@@ -78,16 +79,16 @@ export class WebSocketService {
     
     switch (type) {
       case 'connected':
-        console.log('WebSocket authentication successful');
+        debugLog('WebSocket authentication successful');
         break;
         
       case 'subscribed':
       case 'subscription_confirmed':
-        console.log('话题订阅成功:', message.topics);
+        debugLog('话题订阅成功:', message.topics);
         break;
       
       case 'unsubscribed':
-        console.log('取消订阅:', message.topics);
+        debugLog('取消订阅:', message.topics);
         break;
 
       case 'robot_list_updated':
@@ -95,7 +96,7 @@ export class WebSocketService {
         break;
 
       case 'robot_command_sent':
-        console.log(`指令已下发到 [${message.robot_id}]:`, message.command);
+        debugLog(`指令已下发到 [${message.robot_id}]:`, message.command);
         break;
         
       case 'camera':
@@ -127,11 +128,11 @@ export class WebSocketService {
         break;
 
       case 'ack':
-        console.log('Message acknowledged:', message.message);
+        debugLog('Message acknowledged:', message.message);
         break;
 
       case 'error':
-        console.error('服务器错误:', message.message);
+        errorLog('服务器错误:', message.message);
         break;
 
       default:
@@ -141,7 +142,7 @@ export class WebSocketService {
   
   private handleRobotListUpdated(msg: import('../types/websocket').WSRobotListMessage): void {
     const robots = msg.robots;
-    console.log('在线机器人列表更新:', robots);
+    debugLog('在线机器人列表更新:', robots);
     useSensorStore.getState().setRobotList(robots);
     const systemStore = useSystemStore.getState();
     robots.forEach((rid: string) => systemStore.updateRobotConnection(rid, 'ros', true));
@@ -233,7 +234,7 @@ export class WebSocketService {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(message));
     } else {
-      console.error('WebSocket is not connected');
+      errorLog('WebSocket is not connected');
     }
   }
   
@@ -243,7 +244,7 @@ export class WebSocketService {
       return;
     }
     this.send({ type: 'subscribe', data: { topics } });
-    console.log('发送订阅请求:', topics);
+    debugLog('发送订阅请求:', topics);
   }
   
   unsubscribe(topics: string[]): void {
@@ -253,7 +254,7 @@ export class WebSocketService {
   private attemptReconnect(): void {
     if (this.reconnectAttempts < this.maxReconnectAttempts) {
       this.reconnectAttempts++;
-      console.log(`Attempting to reconnect... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+      debugLog(`Attempting to reconnect... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
       
       setTimeout(() => {
         if (this.url) {
@@ -263,7 +264,7 @@ export class WebSocketService {
         }
       }, this.reconnectInterval);
     } else {
-      console.error('Max reconnection attempts reached');
+      errorLog('Max reconnection attempts reached');
     }
   }
   

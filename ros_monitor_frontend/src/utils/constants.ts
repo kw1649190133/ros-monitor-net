@@ -43,9 +43,9 @@ export const config = {
   // 应用配置
   APP_TITLE: import.meta.env.VITE_APP_TITLE || 'ROS远程监控系统',
   
-  // WebSocket配置
-  WS_RECONNECT_ATTEMPTS: 5,
-  WS_RECONNECT_INTERVAL: 3000,
+  // WebSocket配置（可通过 VITE_WS_RECONNECT_* 环境变量覆盖）
+  WS_RECONNECT_ATTEMPTS: parseInt(import.meta.env.VITE_WS_RECONNECT_ATTEMPTS || '5'),
+  WS_RECONNECT_INTERVAL: parseInt(import.meta.env.VITE_WS_RECONNECT_INTERVAL || '3000'),
   
   // 数据配置
   MAX_HISTORY_POINTS: 1000,

@@ -1,3 +1,4 @@
+import { debugLog } from '../../utils/logger';
 import React, { useEffect, useState } from 'react';
 import { Card, Row, Col, Typography, Statistic, Tag, Space, Button, Tooltip, InputNumber } from 'antd';
 import {
@@ -24,11 +25,11 @@ export const SLAMMonitor: React.FC = () => {
   
   // 订阅SLAM数据
   useEffect(() => {
-    console.log('🎯 订阅SLAM话题...');
+    debugLog('🎯 订阅SLAM话题...');
     wsService.subscribe(['slam']);
     
     return () => {
-      console.log('🎯 取消订阅SLAM话题...');
+      debugLog('🎯 取消订阅SLAM话题...');
       wsService.unsubscribe(['slam']);
     };
   }, []);

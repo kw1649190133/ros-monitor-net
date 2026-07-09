@@ -391,6 +391,25 @@ async def background_broadcast():
     """后台数据广播任务 —— 按机器人逐个读取数据并推送给浏览器客户端。"""
     while True:
         try:
+            # 心跳超时清理：移除断联超过 ROBOT_HEARTBEAT_TIMEOUT 的机器人
+            now = time.time()
+            stale = []
+            async with _robot_state_lock:
+                for rid, conn in list(robot_connections.items()):
+                    if now - conn.get('last_seen', 0) > ROBOT_HEARTBEAT_TIMEOUT:
+                        stale.append(rid)
+                for rid in stale:
+                    logger.warning(f"机器人 [{rid}] 超时未响应，标记为离线")
+                    try:
+                        ws = robot_connections[rid].get('ws')
+                        if ws:
+                            await ws.close()
+                    except Exception:
+                        pass
+                    del robot_connections[rid]
+            if stale:
+                await _broadcast_robot_list()
+            
             robot_ids = ros_manager.get_robot_list() if ros_manager else []
             
             # 如果没有机器人数据但 rosbridge 模式活跃（兼容旧模式）
@@ -407,7 +426,9 @@ async def background_broadcast():
         except Exception as e:
             logger.error(f"Background broadcast error: {e}")
         
-        await asyncio.sleep(0.5)  # 2Hz广播频率，降低带宽压力
+        # 广播间隔（默认 0.5s/2Hz，可通过环境变量调整）
+        broadcast_interval = float(os.getenv("BROADCAST_INTERVAL", "0.5"))
+        await asyncio.sleep(broadcast_interval)
 
 
 async def _broadcast_for_robot(robot_id: str):

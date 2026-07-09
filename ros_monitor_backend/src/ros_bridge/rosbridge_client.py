@@ -6,6 +6,7 @@ Rosbridge WebSocket 客户端
 import asyncio
 import logging
 import time
+import random
 import roslibpy
 from typing import Callable, Dict, Any, Optional
 
@@ -23,8 +24,28 @@ class RosbridgeClient:
         self._lock = asyncio.Lock()
         self._connected = asyncio.Event()
 
-    async def connect(self, timeout: float = 10.0) -> None:
-        """连接到 rosbridge_server，异步等待连接就绪。"""
+    async def connect(self, timeout: float = 10.0, max_retries: int = 3) -> None:
+        """连接到 rosbridge_server，支持重试与抖动避免惊群。"""
+        last_error = None
+        for attempt in range(max_retries):
+            try:
+                await self._connect_once(timeout)
+                return
+            except ConnectionError as e:
+                last_error = e
+                jitter = random.uniform(1.0, 3.0)
+                wait = (2 ** attempt) + jitter
+                logger.warning(
+                    f"rosbridge 连接失败 (attempt {attempt + 1}/{max_retries})，"
+                    f"{wait:.1f}s 后重试: {e}"
+                )
+                await asyncio.sleep(wait)
+        raise ConnectionError(
+            f"rosbridge 连接失败（已重试 {max_retries} 次）: {last_error}"
+        )
+
+    async def _connect_once(self, timeout: float = 10.0) -> None:
+        """单次连接尝试。"""
         self.ros = roslibpy.Ros(host=self.host, port=self.port)
         self._connected.clear()
 

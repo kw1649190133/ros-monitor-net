@@ -1,3 +1,4 @@
+import { debugLog } from '../utils/logger';
 import { useSystemStore } from '../stores/useSystemStore';
 import { config } from '../utils/constants';
 
@@ -135,7 +136,7 @@ class APIService {
         const rosReady = healthResponse.ros_ready;
         systemStore.updateConnectionStatus('ros', rosReady);
         
-        console.log('API健康检查成功:', {
+        debugLog('API健康检查成功:', {
           api: true, ros: rosReady,
           websocket_clients: healthResponse.websocket_clients,
           robot_connections: healthResponse.robot_connections,
@@ -190,7 +191,7 @@ class APIService {
    */
   updateBaseURL(host: string, port: number): void {
     this.baseURL = `http://${host}:${port}`;
-    console.log('API基础URL已更新:', this.baseURL);
+    debugLog('API基础URL已更新:', this.baseURL);
   }
 }
 

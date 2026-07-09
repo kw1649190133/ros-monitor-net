@@ -1,11 +1,11 @@
-import React, { useRef, useMemo } from 'react';
+import React, { useRef, useMemo, useEffect, useState, useCallback } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Grid, Line } from '@react-three/drei';
 import * as THREE from 'three';
 import { useSensorStore } from '../../stores/useSensorStore';
 
 // 坐标轴组件 - Z轴朝上，X前，Y左 的右手系
-const CoordinateAxes: React.FC<{ size?: number }> = ({ size = 2 }) => {
+const CoordinateAxes: React.FC<{ size?: number }> = React.memo(({ size = 2 }) => {
   return (
     <group>
       <Line points={[[0, 0, 0], [size, 0, 0]]} color="red" lineWidth={2} />
@@ -87,7 +87,7 @@ const CurrentFrameCloud: React.FC = React.memo(() => {
 };
 
 // 历史点云 - 支持手动调整最大点数和帧数
-const HistoryMapCloud: React.FC<{ maxPoints?: number; maxFrames?: number }> = ({
+const HistoryMapCloud: React.FC<{ maxPoints?: number; maxFrames?: number }> = React.memo(({
   maxPoints = 10000,
   maxFrames = 20,
 }) => {
@@ -160,7 +160,7 @@ const HistoryMapCloud: React.FC<{ maxPoints?: number; maxFrames?: number }> = ({
       <pointsMaterial size={0.03} vertexColors sizeAttenuation transparent opacity={0.9} />
     </points>
   );
-};
+});
 
 // 场景内容
 const SceneContent: React.FC<{ maxCloudPoints: number; maxCloudFrames: number }> = ({
@@ -193,9 +193,27 @@ export const SLAMViewer3D: React.FC<{
   maxCloudPoints?: number;
   maxCloudFrames?: number;
 }> = ({ style, maxCloudPoints = 10000, maxCloudFrames = 20 }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerHeight, setContainerHeight] = useState(500);
+
+  const updateHeight = useCallback(() => {
+    if (containerRef.current) {
+      const w = containerRef.current.clientWidth;
+      setContainerHeight(Math.max(300, Math.min(800, w * 0.6)));
+    }
+  }, []);
+
+  useEffect(() => {
+    updateHeight();
+    const ro = new ResizeObserver(updateHeight);
+    if (containerRef.current) ro.observe(containerRef.current);
+    return () => ro.disconnect();
+  }, [updateHeight]);
+
   return (
-    <div style={{ width: '100%', height: '500px', ...style }}>
-      <Canvas camera={{ position: [-5, -5, 5], up: [0, 0, 1], fov: 60 }}>
+    <div ref={containerRef} style={{ width: '100%', height: containerHeight, ...style }}>
+      <Canvas camera={{ position: [-5, -5, 5], up: [0, 0, 1], fov: 60 }}
+        dpr={[0.5, 1.5]} performance={{ min: 0.5 }}>
         <SceneContent maxCloudPoints={maxCloudPoints} maxCloudFrames={maxCloudFrames} />
       </Canvas>
     </div>
