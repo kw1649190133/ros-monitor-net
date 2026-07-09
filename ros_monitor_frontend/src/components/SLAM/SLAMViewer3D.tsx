@@ -12,7 +12,8 @@ const CoordinateAxes: React.FC<{ size?: number }> = React.memo(({ size = 2 }) =>
       <Line points={[[0, 0, 0], [0, size, 0]]} color="green" lineWidth={2} />
       <Line points={[[0, 0, 0], [0, 0, size]]} color="blue" lineWidth={2} />
     </group>
-  ));
+  );
+});
 
 // 轨迹线组件
 const TrajectoryLine: React.FC = React.memo(() => {
