@@ -72,7 +72,7 @@ const RobotCard: React.FC<RobotCardProps> = ({ robotId, index }) => {
         borderLeft: `4px solid ${getRobotColor(index)}`,
         boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
       }}
-      bodyStyle={{ padding: '12px 16px' }}
+      styles={{ body: { padding: '12px 16px' } }}
     >
       <Space direction="vertical" style={{ width: '100%' }} size="small">
         {/* 头部：名称 + 连接状态 */}

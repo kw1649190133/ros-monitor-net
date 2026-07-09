@@ -12,6 +12,7 @@ import {
 } from '@ant-design/icons';
 import { useSystemStore } from '../../stores/useSystemStore';
 import { useSensorStore } from '../../stores/useSensorStore';
+import { StatusBadge, getStatusColor } from '../../utils/statusHelpers';
 
 const { Title, Text } = Typography;
 
@@ -26,18 +27,8 @@ export const SystemStatus: React.FC = () => {
   const gnss   = robotState?.gnss   ?? { latest: null, history: [], status: { connected: false, lastUpdate: 0, frequency: 0, errorCount: 0 } };
   
 
-  const getStatusBadge = (connected: boolean) => (
-    <Badge 
-      status={connected ? 'success' : 'error'} 
-      text={connected ? '正常' : '离线'} 
-    />
-  );
-
   const formatFrequency = (freq: number) => 
-    freq > 0 ? `${freq.toFixed(1)} Hz` : '0 Hz';
-
-  const getConnectionColor = (connected: boolean) => 
-    connected ? '#52c41a' : '#ff4d4f';
+    freq > 0 ? `${freq.toFixed(1)} /> Hz` : '0 Hz';
 
   return (
     <div style={{ width: '100%' }}>
@@ -62,21 +53,21 @@ export const SystemStatus: React.FC = () => {
                   <WifiOutlined />
                   <span>WebSocket</span>
                 </Space>
-                {getStatusBadge(connection.websocket)}
+                {<StatusBadge connected={connection.websocket)} />
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Space>
                   <ApiOutlined />
                   <span>API</span>
                 </Space>
-                {getStatusBadge(connection.api)}
+                {<StatusBadge connected={connection.api)} />
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Space>
                   <RobotOutlined />
                   <span>ROS</span>
                 </Space>
-                {getStatusBadge(connection.ros)}
+                {<StatusBadge connected={connection.ros)} />
               </div>
             </Space>
           </Card>
@@ -139,13 +130,13 @@ export const SystemStatus: React.FC = () => {
                 borderBottom: '1px solid #f0f0f0'
               }}>
                 <Space>
-                  <CameraOutlined style={{ color: getConnectionColor(camera.status.connected) }} />
+                  <CameraOutlined style={{ color: getStatusColor(camera.status.connected) }} />
                   <span>相机</span>
                 </Space>
                 <Space>
-                  {getStatusBadge(camera.status.connected)}
+                  {<StatusBadge connected={camera.status.connected)} />
                   <span style={{ fontSize: '12px', color: '#666' }}>
-                    {formatFrequency(camera.status.frequency)}
+                    {formatFrequency(camera.status.frequency)} />
                   </span>
                 </Space>
               </div>
@@ -157,13 +148,13 @@ export const SystemStatus: React.FC = () => {
                 borderBottom: '1px solid #f0f0f0'
               }}>
                 <Space>
-                  <RadarChartOutlined style={{ color: getConnectionColor(lidar.status.connected) }} />
+                  <RadarChartOutlined style={{ color: getStatusColor(lidar.status.connected) }} />
                   <span>激光雷达</span>
                 </Space>
                 <Space>
-                  {getStatusBadge(lidar.status.connected)}
+                  {<StatusBadge connected={lidar.status.connected)} />
                   <span style={{ fontSize: '12px', color: '#666' }}>
-                    {formatFrequency(lidar.status.frequency)}
+                    {formatFrequency(lidar.status.frequency)} />
                   </span>
                 </Space>
               </div>
@@ -174,13 +165,13 @@ export const SystemStatus: React.FC = () => {
                 padding: '8px 0'
               }}>
                 <Space>
-                  <AimOutlined style={{ color: getConnectionColor(gnss.status.connected) }} />
+                  <AimOutlined style={{ color: getStatusColor(gnss.status.connected) }} />
                   <span>GNSS/RTK</span>
                 </Space>
                 <Space>
-                  {getStatusBadge(gnss.status.connected)}
+                  {<StatusBadge connected={gnss.status.connected)} />
                   <span style={{ fontSize: '12px', color: '#666' }}>
-                    {formatFrequency(gnss.status.frequency)}
+                    {formatFrequency(gnss.status.frequency)} />
                   </span>
                 </Space>
               </div>
@@ -203,7 +194,7 @@ export const SystemStatus: React.FC = () => {
           >
             <Statistic
               title="运行时间"
-              value={Math.floor(performance.uptime / 60)}
+              value={Math.floor(performance.uptime / 60)} />
               suffix="分钟"
               valueStyle={{ color: '#1890ff', fontSize: '28px' }}
             />
@@ -272,13 +263,13 @@ export const SystemStatus: React.FC = () => {
           >
             <Row gutter={[16, 16]}>
               <Col xs={24} sm={8}>
-                <Text strong>ROS版本:</Text> <Text>Noetic</Text>
+                <Text strong>系统状态:</Text> <Text>{connection.websocket && connection.api ? '运行中' : '待连接'}</Text>
               </Col>
               <Col xs={24} sm={8}>
-                <Text strong>系统平台:</Text> <Text>Ubuntu 20.04</Text>
+                <Text strong>WebSocket:</Text> <Text>{connection.websocket ? '已连接' : '未连接'}</Text>
               </Col>
               <Col xs={24} sm={8}>
-                <Text strong>监控版本:</Text> <Text>v1.0.0</Text>
+                <Text strong>ROS就绪:</Text> <Text>{connection.ros ? '是' : '否'}</Text>
               </Col>
             </Row>
           </Card>

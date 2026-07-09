@@ -9,18 +9,13 @@ import {
 } from '@ant-design/icons';
 import { useSystemStore } from '../../stores/useSystemStore';
 import { useSensorStore } from '../../stores/useSensorStore';
+import { getStatusColor, getStatusText } from '../../utils/statusHelpers';
 
 const { Title } = Typography;
 
 export const Header: React.FC = () => {
   const { connection, ui, toggleSidebar } = useSystemStore();
   const { robotIds, activeRobotId, setActiveRobot } = useSensorStore();
-
-  const getStatusColor = (connected: boolean) => 
-    connected ? '#52c41a' : '#ff4d4f';
-
-  const getStatusText = (connected: boolean) =>
-    connected ? '已连接' : '未连接';
 
   return (
     <div

@@ -5,6 +5,7 @@ import {
   CloseCircleOutlined
 } from '@ant-design/icons';
 import { useSystemStore } from '../../stores/useSystemStore';
+import { getStatusColor, getStatusText, getLatencyColor } from '../../utils/statusHelpers';
 
 interface ConnectionStatusProps {
   className?: string;
@@ -21,20 +22,8 @@ export const ConnectionStatus: React.FC<ConnectionStatusProps> = ({ className })
     return <CloseCircleOutlined style={{ color: '#ff4d4f' }} />;
   };
   
-  const getConnectionColor = (status: boolean) => {
-    return status ? 'green' : 'red';
-  };
   
-  const getConnectionText = (status: boolean, connecting: boolean = false) => {
-    if (connecting) return '连接中...';
-    return status ? '已连接' : '未连接';
-  };
   
-  const getLatencyColor = (latency: number) => {
-    if (latency < 100) return '#52c41a';
-    if (latency < 300) return '#faad14';
-    return '#ff4d4f';
-  };
   
   const getDataRateColor = (rate: number) => {
     if (rate > 50) return '#52c41a';
@@ -52,8 +41,8 @@ export const ConnectionStatus: React.FC<ConnectionStatusProps> = ({ className })
               <div style={{ textAlign: 'center' }}>
                 {getConnectionIcon(wsConnected)}
                 <div style={{ marginTop: 8 }}>
-                  <Tag color={getConnectionColor(wsConnected)}>
-                    {getConnectionText(wsConnected)}
+                  <Tag color={getStatusColor(wsConnected)}>
+                    {getStatusText(wsConnected)}
                   </Tag>
                 </div>
               </div>
@@ -77,8 +66,8 @@ export const ConnectionStatus: React.FC<ConnectionStatusProps> = ({ className })
               <div style={{ textAlign: 'center' }}>
                 {getConnectionIcon(connection.api)}
                 <div style={{ marginTop: 8 }}>
-                  <Tag color={getConnectionColor(connection.api)}>
-                    {getConnectionText(connection.api)}
+                  <Tag color={getStatusColor(connection.api)}>
+                    {getStatusText(connection.api)}
                   </Tag>
                 </div>
               </div>
@@ -102,8 +91,8 @@ export const ConnectionStatus: React.FC<ConnectionStatusProps> = ({ className })
               <div style={{ textAlign: 'center' }}>
                 {getConnectionIcon(connection.ros)}
                 <div style={{ marginTop: 8 }}>
-                  <Tag color={getConnectionColor(connection.ros)}>
-                    {getConnectionText(connection.ros)}
+                  <Tag color={getStatusColor(connection.ros)}>
+                    {getStatusText(connection.ros)}
                   </Tag>
                 </div>
               </div>
@@ -173,20 +162,20 @@ export const ConnectionStatus: React.FC<ConnectionStatusProps> = ({ className })
               </div>
               <div>
                 <span>WebSocket: </span>
-                <Tag color={getConnectionColor(wsConnected)}>
-                  {getConnectionText(wsConnected)}
+                <Tag color={getStatusColor(wsConnected)}>
+                  {getStatusText(wsConnected)}
                 </Tag>
               </div>
               <div>
                 <span>后端API: </span>
-                <Tag color={getConnectionColor(connection.api)}>
-                  {getConnectionText(connection.api)}
+                <Tag color={getStatusColor(connection.api)}>
+                  {getStatusText(connection.api)}
                 </Tag>
               </div>
               <div>
                 <span>ROS系统: </span>
-                <Tag color={getConnectionColor(connection.ros)}>
-                  {getConnectionText(connection.ros)}
+                <Tag color={getStatusColor(connection.ros)}>
+                  {getStatusText(connection.ros)}
                 </Tag>
               </div>
             </Space>

@@ -16,7 +16,7 @@ const CoordinateAxes: React.FC<{ size?: number }> = ({ size = 2 }) => {
 };
 
 // 轨迹线组件
-const TrajectoryLine: React.FC = () => {
+const TrajectoryLine: React.FC = React.memo(() => {
   const { robotData, activeRobotId } = useSensorStore();
   const slam = activeRobotId ? robotData[activeRobotId]?.slam : null;
   
@@ -33,7 +33,7 @@ const TrajectoryLine: React.FC = () => {
 };
 
 // 当前位姿标记
-const CurrentPoseMarker: React.FC = () => {
+const CurrentPoseMarker: React.FC = React.memo(() => {
   const { robotData, activeRobotId } = useSensorStore();
   const slam = activeRobotId ? robotData[activeRobotId]?.slam : null;
   const groupRef = useRef<THREE.Group>(null);
@@ -57,7 +57,7 @@ const CurrentPoseMarker: React.FC = () => {
 };
 
 // 当前帧点云 - 固定红色
-const CurrentFrameCloud: React.FC = () => {
+const CurrentFrameCloud: React.FC = React.memo(() => {
   const { robotData, activeRobotId } = useSensorStore();
   const slam = activeRobotId ? robotData[activeRobotId]?.slam : null;
   const pointsRef = useRef<THREE.Points>(null);
