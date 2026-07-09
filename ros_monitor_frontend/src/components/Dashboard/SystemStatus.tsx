@@ -31,7 +31,7 @@ export const SystemStatus: React.FC = () => {
     freq > 0 ? `${freq.toFixed(1)} Hz` : '0 Hz';
 
   return (
-    <div style={{ width: '100%' }}>
+    <div style={{ width: '100%', contain: 'layout style paint' }}>
       {/* 页面标题 */}
       <div style={{ marginBottom: '32px', textAlign: 'center' }}>
         <Title level={2} style={{ color: '#1890ff', marginBottom: '12px' }}>

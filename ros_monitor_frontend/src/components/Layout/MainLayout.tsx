@@ -1,4 +1,4 @@
-import { debugLog } from '../../utils/logger';
+import { debugLog, errorLog } from '../../utils/logger';
 import React, { useEffect } from 'react';
 
 import { Header } from './Header';
@@ -36,7 +36,7 @@ export const MainLayout: React.FC = () => {
           timestamp: new Date().toISOString(),
         });
       } catch (error) {
-        console.error('❌ WebSocket连接失败:', error);
+        errorLog('❌ WebSocket连接失败:', error);
       }
     };
 

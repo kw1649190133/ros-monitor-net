@@ -1,3 +1,4 @@
+import { errorLog } from '../../utils/logger';
 import React, { useState, useEffect } from 'react';
 import { Button, Card, Row, Col, message } from 'antd';
 import { PlayCircleOutlined, StopOutlined, ReloadOutlined } from '@ant-design/icons';
@@ -25,7 +26,7 @@ export const DataCollectionControl: React.FC<DataCollectionControlProps> = ({ cl
         setStatus(response.data);
       }
     } catch (error) {
-      console.error('Failed to fetch status:', error);
+      errorLog('Failed to fetch status:', error);
     }
   };
 

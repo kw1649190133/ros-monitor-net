@@ -32,7 +32,7 @@ export const ConnectionStatus: React.FC<ConnectionStatusProps> = ({ className })
   };
   
   return (
-    <Card title="连接状态监控" className={className}>
+    <Card title="连接状态监控" style={{ contain: 'layout style paint' }} className={className}>
       <Row gutter={[16, 16]}>
         {/* WebSocket连接状态 */}
         <Col span={8}>

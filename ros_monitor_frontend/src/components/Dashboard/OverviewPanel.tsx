@@ -193,7 +193,7 @@ export const OverviewPanel: React.FC = () => {
       {/* 总体统计 */}
       <Row gutter={[16, 16]} style={{ marginBottom: '24px' }}>
         <Col xs={12} sm={6}>
-          <Card style={{ textAlign: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
+          <Card style={{ contain: 'layout style paint', textAlign: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
             <Statistic
               title={<Space><WifiOutlined /> 在线机器人</Space>}
               value={onlineRobots}
@@ -203,7 +203,7 @@ export const OverviewPanel: React.FC = () => {
           </Card>
         </Col>
         <Col xs={12} sm={6}>
-          <Card style={{ textAlign: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
+          <Card style={{ contain: 'layout style paint', textAlign: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
             <Statistic
               title={<Space><ThunderboltOutlined /> 传感器在线</Space>}
               value={totalSensors}
@@ -213,7 +213,7 @@ export const OverviewPanel: React.FC = () => {
           </Card>
         </Col>
         <Col xs={12} sm={6}>
-          <Card style={{ textAlign: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
+          <Card style={{ contain: 'layout style paint', textAlign: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
             <Statistic
               title={<Space><ApiOutlined /> WebSocket</Space>}
               value={connection.websocket ? '已连接' : '未连接'}
@@ -222,7 +222,7 @@ export const OverviewPanel: React.FC = () => {
           </Card>
         </Col>
         <Col xs={12} sm={6}>
-          <Card style={{ textAlign: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
+          <Card style={{ contain: 'layout style paint', textAlign: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
             <Statistic
               title={<Space><ClockCircleOutlined /> 系统状态</Space>}
               value={connection.websocket && connection.api ? '正常' : '异常'}
@@ -239,7 +239,7 @@ export const OverviewPanel: React.FC = () => {
       </Title>
 
       {robotIds.length === 0 ? (
-        <Card style={{ textAlign: 'center', padding: '48px' }}>
+        <Card style={{ contain: 'layout style paint', textAlign: 'center', padding: '48px' }}>
           <Text type="secondary" style={{ fontSize: '16px' }}>
             暂无在线机器人，请检查后端连接或等待机器人上线
           </Text>

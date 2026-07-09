@@ -1,4 +1,4 @@
-import { debugLog, errorLog } from '../utils/logger';
+import { debugLog, errorLog, warnLog } from '../utils/logger';
 import { useSensorStore } from '../stores/useSensorStore';
 import { useSystemStore } from '../stores/useSystemStore';
 import { config } from '../utils/constants';
@@ -136,7 +136,7 @@ export class WebSocketService {
         break;
 
       default:
-        console.warn('未知消息类型:', type, message);
+        warnLog('未知消息类型:', type, message);
     }
   }
   
@@ -240,7 +240,7 @@ export class WebSocketService {
   
   subscribe(topics: string[]): void {
     if (!this.isConnected()) {
-      console.warn('WebSocket还未连接，无法订阅:', topics);
+      warnLog('WebSocket还未连接，无法订阅:', topics);
       return;
     }
     this.send({ type: 'subscribe', data: { topics } });
@@ -260,7 +260,7 @@ export class WebSocketService {
         if (this.url) {
           this.connect(this.url.replace('ws://', '').split(':')[0], 
                       parseInt(this.url.split(':')[2].split('/')[0]))
-            .catch(console.error);
+            .catch(errorLog);
         }
       }, this.reconnectInterval);
     } else {

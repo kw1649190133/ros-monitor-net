@@ -1,4 +1,4 @@
-import { debugLog } from '../utils/logger';
+import { debugLog, errorLog } from '../utils/logger';
 import { useSystemStore } from '../stores/useSystemStore';
 import { config } from '../utils/constants';
 
@@ -56,11 +56,11 @@ class APIService {
         const data: APIHealthResponse = await response.json();
         return data;
       } else {
-        console.error('API health check failed:', response.status, response.statusText);
+        errorLog('API health check failed:', response.status, response.statusText);
         return null;
       }
     } catch (error) {
-      console.error('API health check error:', error);
+      errorLog('API health check error:', error);
       return null;
     }
   }
@@ -82,11 +82,11 @@ class APIService {
         const data: SystemStatusResponse = await response.json();
         return data;
       } else {
-        console.error('System status check failed:', response.status, response.statusText);
+        errorLog('System status check failed:', response.status, response.statusText);
         return null;
       }
     } catch (error) {
-      console.error('System status check error:', error);
+      errorLog('System status check error:', error);
       return null;
     }
   }
@@ -146,7 +146,7 @@ class APIService {
         systemStore.updateConnectionStatus('ros', false);
       }
     } catch (error) {
-      console.error('健康检查执行失败:', error);
+      errorLog('健康检查执行失败:', error);
       systemStore.updateConnectionStatus('api', false);
       systemStore.updateConnectionStatus('ros', false);
     }
