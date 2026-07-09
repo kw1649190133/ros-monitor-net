@@ -88,7 +88,7 @@ interface SensorStore {
   clearAllData: () => void;
 }
 
-export const useSensorStore = create<SensorStore>((set, get) => ({
+export const useSensorStore = create<SensorStore>((set) => ({
   robotData: {},
   robotIds: [],
   activeRobotId: null,

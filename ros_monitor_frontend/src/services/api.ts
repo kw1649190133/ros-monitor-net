@@ -1,5 +1,4 @@
 import { useSystemStore } from '../stores/useSystemStore';
-import { useSensorStore } from '../stores/useSensorStore';
 import { config } from '../utils/constants';
 
 export interface APIHealthResponse {

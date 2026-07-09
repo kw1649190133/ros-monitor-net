@@ -152,21 +152,20 @@ export class WebSocketService {
 
   private handleCameraData(robotId: string, msg: import('../types/websocket').WSCameraMessage): void {
     const { camera_id, timestamp, sequence = 0, encoding, width, height, data, compressed = false } = msg.data;
-    if (camera_id) {
-      useSensorStore.getState().updateCameraData(robotId, camera_id, {
-        camera_id, timestamp, sequence, encoding, width, height, data, compressed,
-      });
-    }
-  }
-  
-  private handleLidarData(robotId: string, msg: import('../types/websocket').WSLidarMessage): void {
-    const { timestamp, frame_id = 'map', point_count, data: points } = msg.data;
-    useSensorStore.getState().updateLidarData(robotId, {
-      timestamp, frame_id, point_count, points,
+    const side = (camera_id.includes('left') ? 'left' : 'right') as 'left' | 'right';
+    useSensorStore.getState().updateCameraData(robotId, side, {
+      camera_id, timestamp, sequence, encoding, width, height, data, compressed,
     });
   }
   
-  private handleSystemStatus(msg: import('../types/websocket').WSSystemStatusMessage): void {
+  private handleLidarData(robotId: string, msg: import('../types/websocket').WSLidarMessage): void {
+    const { timestamp, frame_id = 'map', point_count, data: points, fields, compression } = msg.data;
+    useSensorStore.getState().updateLidarData(robotId, {
+      timestamp, frame_id, point_count, data: points, fields, compression,
+    });
+  }
+  
+  private handleSystemStatus(_msg: import('../types/websocket').WSSystemStatusMessage): void {
     useSystemStore.getState().updatePerformanceMetrics({
       dataRate: 0,
       errorCount: 0,

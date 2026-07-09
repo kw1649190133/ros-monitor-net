@@ -15,7 +15,9 @@ export interface LidarData {
   timestamp: number;
   frame_id: string;
   point_count: number;
-  points: number[]; // 点云数据数组
+  data: number[][]; // [[x,y,z],...] — 后端实际字段名
+  fields?: { name: string; offset: number; datatype: number; count: number }[];
+  compression?: string;
 }
 
 export interface SensorStatus {

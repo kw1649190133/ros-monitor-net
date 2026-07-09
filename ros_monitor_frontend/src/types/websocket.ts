@@ -1,6 +1,7 @@
 // WebSocket 消息类型定义 — Discriminated Union
 
-import type { CameraData, LidarData, GNSSData, PathData, OdometryData, RegisteredCloudData } from './sensors';
+import type { CameraData, LidarData, PathData, OdometryData, RegisteredCloudData } from './sensors';
+import type { GNSSData } from './gnss';
 
 // ---- 服务端 → 客户端消息 ----
 

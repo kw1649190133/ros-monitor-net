@@ -137,13 +137,11 @@ export const CameraViewer: React.FC<CameraViewerProps> = ({
   }, [cameraId]);
   
   const handleRefresh = useCallback(() => {
-    if (connected) {
-      sendMessage({
-        type: 'request_system_status'
-      });
+    if (wsConnected) {
+      wsService.send({ type: 'request_system_status' });
       message.info('正在刷新系统状态...');
     }
-  }, [connected, sendMessage]);
+  }, [wsConnected]);
   
   // 计算状态信息
   const statusColor = connectionStatus === 'connected' ? 'success' : 'error';
@@ -177,7 +175,7 @@ export const CameraViewer: React.FC<CameraViewerProps> = ({
             onChange={handleStreamToggle}
             checkedChildren="ON"
             unCheckedChildren="OFF"
-            disabled={!connected}
+            disabled={!wsConnected}
           />
           <Button 
             icon={<SettingOutlined />}
@@ -262,7 +260,7 @@ export const CameraViewer: React.FC<CameraViewerProps> = ({
         )}
         
         {/* 连接状态提示 */}
-        {!connected && (
+        {!wsConnected && (
           <div 
             style={{
               position: 'absolute',
@@ -287,8 +285,8 @@ export const CameraViewer: React.FC<CameraViewerProps> = ({
           <span>错误: {errorCount}</span>
           {cameraData && (
             <>
-              <span>压缩率: {cameraData.compression_ratio.toFixed(2)}%</span>
-              <span>帧率: {cameraData.frame_rate.toFixed(2)} FPS</span>
+              <span>编码: {cameraData.encoding}</span>
+              <span>压缩: {cameraData.compressed ? '是' : '否'}</span>
             </>
           )}
         </Space>
